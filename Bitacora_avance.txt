@@ -55,18 +55,16 @@ peru-budget-lakehouse/
 ---
 
 ## 4. COMANDOS DE INICIALIZACIÓN (Quickstart)
+Para qué sirve cada herramienta en tu "Local Lakehouse"?
+polars: Tu motor principal. Procesará los 8.5 GB en paralelo usando todos tus hilos de CPU. Es el reemplazo moderno de Pandas.
 
-Pasos ejecutados para el despliegue del entorno en Fedora:
+duckdb: La "navaja suiza" de SQL. Te permitirá hacer consultas analíticas ultra rápidas sobre tus archivos Parquet sin necesidad de instalar una base de datos real.
 
-```bash
-# Inicializar proyecto
-uv init
+pyarrow: Es el motor que permite a Polars y DuckDB escribir y leer archivos Parquet de forma eficiente. Es indispensable para la capa Silver y Gold.
 
-# Agregar dependencias de alto rendimiento
-uv add polars duckdb pyarrow
+connectorx: (Opcional pero recomendado) Es la librería más rápida para leer datos de SQL hacia Python si en el futuro decides traer datos de una fuente externa.
 
-# Crear estructura de carpetas
-mkdir -p data/01_bronze data/02_silver data/03_gold notebooks src reports
+notebook e ipykernel: Necesarios para que VS Code pueda ejecutar tus archivos .ipynb (Jupyter) usando el entorno virtual que gestiona uv.
 
 ```
 
