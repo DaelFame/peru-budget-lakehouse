@@ -1,0 +1,83 @@
+Esta es la hoja de ruta técnica para el nuevo proyecto **peru-budget-lakehouse**. He estructurado esta bitácora para que sea clara, profesional y fácil de copiar a tu archivo `.txt`.
+
+---
+
+# BITÁCORA DE PROYECTO: PERU-BUDGET-LAKEHOUSE
+
+## 1. STACK TECNOLÓGICO (Local Lakehouse Stack)
+
+Para este proyecto, priorizamos el rendimiento multihilo (aprovechando el Ryzen 9) y la portabilidad sin dependencias de servidores.
+
+* **Gestor de Entorno:** `uv` (Fastest Python package manager). Reemplaza a pip/conda por su velocidad y capacidad de generar entornos reproducibles con `uv.lock`.
+* **Motor de Procesamiento:** `Polars`. Motor de DataFrames escrito en Rust. Utiliza evaluación perezosa (Lazy API) y paralelismo nativo.
+* **Motor de Consulta SQL:** `DuckDB`. Base de datos analítica (OLAP) in-process. Permite ejecutar SQL complejo directamente sobre archivos Parquet con rendimiento de clase mundial.
+* **Formato de Almacenamiento:** `Apache Arrow / Parquet`. Formato columnar que reduce el espacio en disco y acelera las lecturas de datos en comparación con CSV o Excel.
+* **Entorno de Desarrollo:** `VS Code` + `Jupyter Notebooks`. Para experimentación interactiva y prototipado de pipelines.
+
+---
+
+## 2. ARQUITECTURA DE DATOS (Medallion Architecture)
+
+El proyecto se organiza en capas lógicas para asegurar la trazabilidad y calidad del dato:
+
+* **CAPA BRONZE (Raw):** Ingesta de datos crudos. Archivos CSV/Excel tal cual se descargan del MEF. Inmutables.
+* **CAPA SILVER (Cleansed):** Datos limpios y normalizados. Nombres de columnas en snake_case, tipos de datos corregidos (fechas, decimales) y filtros iniciales. Formato: Parquet.
+* **CAPA GOLD (Curated):** Modelo Estrella (Star Schema). Tablas de Dimensiones y Hechos optimizadas para analítica financiera y BI. Formato: Parquet.
+
+---
+
+## 3. ESTRUCTURA DE DIRECTORIOS (Project Scaffold)
+
+Esta organización cumple con los estándares de producción en Data Engineering:
+
+```text
+peru-budget-lakehouse/
+├── .env                  # Variables de entorno (rutas locales)
+├── .gitignore            # Exclusión de datos pesados y entornos virtuales
+├── pyproject.toml        # Configuración de dependencias (Managed by uv)
+├── uv.lock               # Bloqueo de versiones de librerías
+├── README.md             # Documentación técnica y narrativa del cambio
+├── data/                 # Almacenamiento local del Lakehouse
+│   ├── 01_bronze/        # CSV/Excel originales (Inmutables)
+│   ├── 02_silver/        # Parquet limpios y tipados
+│   └── 03_gold/          # Modelo Estrella (Hechos y Dimensiones)
+├── notebooks/            # Jupyter Notebooks para exploración e ingesta
+│   ├── 01_ingesta_silver.ipynb
+│   └── 02_modelado_gold.ipynb
+├── src/                  # Código fuente modular (funciones reutilizables)
+│   ├── __init__.py
+│   ├── utils.py          # Helpers para manejo de archivos
+│   └── transforms.py     # Lógica de limpieza en Polars
+└── reports/              # Resultados finales o archivos de salida para BI
+
+```
+
+---
+
+## 4. COMANDOS DE INICIALIZACIÓN (Quickstart)
+
+Pasos ejecutados para el despliegue del entorno en Fedora:
+
+```bash
+# Inicializar proyecto
+uv init
+
+# Agregar dependencias de alto rendimiento
+uv add polars duckdb pyarrow
+
+# Crear estructura de carpetas
+mkdir -p data/01_bronze data/02_silver data/03_gold notebooks src reports
+
+```
+
+---
+
+## 5. FILOSOFÍA DE TRABAJO
+
+1. **Code-First:** El pipeline se define en código (Python/Polars), no en herramientas GUI.
+2. **Performance:** Cada transformación debe ser evaluada mediante el plan de ejecución de Polars (`df.explain()`) para maximizar el uso de los 16 hilos del procesador.
+3. **No-DB:** No se requiere una instancia de base de datos activa (Postgres/MySQL); el archivo es la base de datos.
+
+---
+
+**Siguiente paso:** Ingesta de archivos del MEF a `data/01_bronze/` y definición del primer esquema de datos en Polars.
