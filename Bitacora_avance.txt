@@ -79,3 +79,10 @@ notebook e ipykernel: Necesarios para que VS Code pueda ejecutar tus archivos .i
 ---
 
 **Siguiente paso:** Ingesta de archivos del MEF a `data/01_bronze/` y definición del primer esquema de datos en Polars.
+
+
+15 de mayo 
+Estams haciendo que primero se verifique con le diccionario para de ahi verificar como esto esta funcionando 
+depues  nos damos cuenta que se dececta cosas que son  texto como numero sy nos importa tener mas en texto para despue shacer jpoins y ahcer un esquema  estrella 
+Ahora hemso creado nuestro  primer codigo parquet pero  mal por que no hemos limpiado nada  y  ni arreglado el data set  , ya que parquet es inmutable ya 
+
