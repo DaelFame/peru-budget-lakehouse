@@ -1,14 +1,37 @@
 import os
+import multiprocessing
 from pathlib import Path
 from dotenv import load_dotenv
 
 # 1. Load environment variables
 load_dotenv()
 
+# ==========================================
+# DYNAMIC HARDWARE DETECTOR (SENIOR LEVEL)
+# ==========================================
+def get_optimal_memory_limit() -> str:
+    """
+    Detecta la RAM total del sistema y asigna el 80% para evitar colapsar el OS.
+    Falla de forma segura a 4GB si no puede leer el hardware.
+    """
+    try:
+        # Lee la RAM física real directo del sistema operativo (Linux/Mac)
+        total_bytes = os.sysconf('SC_PAGE_SIZE') * os.sysconf('SC_PHYS_PAGES')
+        total_gb = total_bytes / (1024 ** 3)
+        # Reservamos el 80% para el procesamiento de datos (mínimo 1GB)
+        optimal_gb = max(1, int(total_gb * 0.8)) 
+        return f"{optimal_gb}GB"
+    except (ValueError, AttributeError):
+        return "4GB"
+
 # 2. Environment and Hardware Configuration
 ENVIRONMENT = os.getenv("ENVIRONMENT", "development")
-MAX_THREADS = int(os.getenv("MAX_THREADS", 4))
-MEMORY_LIMIT = os.getenv("MEMORY_LIMIT", "4GB")
+
+# Piloto Automático: Si no está en .env, usa TODOS los núcleos de la máquina
+MAX_THREADS = int(os.getenv("MAX_THREADS", multiprocessing.cpu_count()))
+
+# Piloto Automático: Si no está en .env, calcula dinámicamente la memoria ideal (80%)
+MEMORY_LIMIT = os.getenv("MEMORY_LIMIT", get_optimal_memory_limit())
 
 # 3. Base Directory Setup
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
