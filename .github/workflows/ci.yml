@@ -1,0 +1,25 @@
+name: Data Lakehouse CI/CD
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  test:
+    name: Run Pytest
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: 📥 Obtener código fuente
+        uses: actions/checkout@v4
+
+      - name: 🚀 Instalar herramienta UV
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: 🐍 Instalar Python y dependencias
+        run: uv sync --dev
+
+      - name: 🧪 Ejecutar pruebas unitarias
+        run: uv run pytest -v
