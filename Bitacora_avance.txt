@@ -1,3 +1,7 @@
+https://datosabiertos.mef.gob.pe/dataset/comparacion-de-presupuesto-ejecucion-gasto/resource/510bae6d-3d37-4fb2-af35-a40ce01715f4
+pagina web de donde saco el dataset
+
+
 Esta es la hoja de ruta técnica para el nuevo proyecto **peru-budget-lakehouse**. He estructurado esta bitácora para que sea clara, profesional y fácil de copiar a tu archivo `.txt`.
 
 ---
