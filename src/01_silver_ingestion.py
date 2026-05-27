@@ -17,7 +17,9 @@ from config import (
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
 
 def load_secure_schema() -> dict:
-    """Reads the MEF data dictionary to enforce text format on descriptive columns."""
+    """Reads the MEF data dictionary to enforce text format on descriptive columns,
+    then discovers all financial _YYYY columns from the CSV header and forces them as Float64
+    to prevent Null-type inference on current fiscal year columns with sparse data."""
     logging.info("Reading MEF variable schema dictionary...")
     try:
         df_dict = pl.read_csv(DICTIONARY_PATH)
@@ -27,23 +29,57 @@ def load_secure_schema() -> dict:
         )
         schema_overrides = {col: pl.String for col in text_columns}
         logging.info(f"Secure schema loaded: Enforcing String type on {len(schema_overrides)} columns.")
-        return schema_overrides
     except Exception as e:
         logging.error(f"Fatal error loading schema dictionary: {e}")
         raise
+
+    # ----------------------------------------------------------------
+    # STRUCTURAL HEADER DISCOVERY: Force Float64 on all financial _YYYY
+    # columns to prevent Null-type inference on sparse current-year data
+    # ----------------------------------------------------------------
+    csv_files = list(BRONZE_DIR.glob("*.csv"))
+    if not csv_files:
+        logging.error("No CSV files found in BRONZE_DIR. Cannot discover financial columns.")
+        raise FileNotFoundError(f"No CSV files found in {BRONZE_DIR}")
+    archivo_gigante = csv_files[0]
+    logging.info(f"Discovered monolithic CSV for header scan: {archivo_gigante.name}")
+
+    # Read ONLY the first row to extract all column names without loading data into memory
+    df_header = pl.read_csv(archivo_gigante, n_rows=1)
+    all_csv_columns = df_header.columns
+
+    # Identify every column whose name ends with a _YYYY year suffix
+    financial_pattern = re.compile(r'_\d{4}$')
+    financial_columns_found = [col for col in all_csv_columns if financial_pattern.search(col)]
+
+    # Inject explicit Float64 overrides for both original and lowercased column names
+    financial_override_count = 0
+    for col in financial_columns_found:
+        schema_overrides[col] = pl.Float64
+        schema_overrides[col.lower()] = pl.Float64
+        financial_override_count += 1
+
+    logging.info(
+        f"Financial column override complete: {financial_override_count} _YYYY columns "
+        f"strictly forced to Float64 (total schema overrides: {len(schema_overrides)})."
+    )
+    return schema_overrides
 
 def consolidate_by_hash_chunking(schema_overrides: dict):
     """Processes the Bronze layer using 16 hexadecimal hash chunks to prevent Out-Of-Memory (OOM) crashes."""
     hash_chars = [str(i) for i in range(10)] + ["a", "b", "c", "d", "e", "f"]
     logging.info("Starting Hash-Chunking Consolidation Phase (16 batches)...")
     
+    # Resolve the explicit path to the single monolithic CSV file
+    archivo_gigante = list(BRONZE_DIR.glob("*.csv"))[0]
+    logging.info(f"Using explicit CSV path for scan: {archivo_gigante.name}")
+    
     for char in hash_chars:
         logging.info(f"Processing batch for keys starting with: '{char}'...")
         
         lazy_mef = pl.scan_csv(
-            BRONZE_DIR / "*.csv", 
+            archivo_gigante, 
             separator=",", 
-            infer_schema_length=10000,
             schema_overrides=schema_overrides,
             ignore_errors=True
         )

@@ -129,11 +129,35 @@ def main():
         logging.error(f"Silver source file not found at {FINAL_SILVER_PATH}. Please run script 01 first.")
         return
         
+    # 1. Escaneamos el Parquet original en modo Lazy
     lazy_silver = pl.scan_parquet(FINAL_SILVER_PATH)
     
+    # 2. 🚀 Sanitización quirúrgica con el nombre formal propuesto
+    lazy_silver = lazy_silver.with_columns([
+        # Si sector_nombre viene vacío, espacios o Null, le asignamos la etiqueta de negocio perfecta
+        pl.when(
+            pl.col("sector_nombre").is_null() | 
+            (pl.col("sector_nombre").str.strip_chars() == "")
+        )
+        .then(pl.lit("gobiernos locales (municipalidades)"))
+        .otherwise(pl.col("sector_nombre"))
+        .alias("sector_nombre"),
+        
+        # Estandarizamos el código del sector a 'gl' para que las llaves (Hashes) sean sólidas
+        pl.when(
+            pl.col("sector").is_null() | 
+            (pl.col("sector").str.strip_chars() == "")
+        )
+        .then(pl.lit("gl"))
+        .otherwise(pl.col("sector"))
+        .alias("sector")
+    ])
+    
+    # 3. Procesamos las dimensiones y hechos con la data ya purificada
     process_dimensions(lazy_silver)
     process_fact_table(lazy_silver)
     
+    # 4. Mensaje de éxito final con el tiempo real de ejecución
     duration = (time.time() - start_time) / 60
     logging.info(f"=== GOLD MODELING COMPLETED IN {duration:.2f} MINUTES ===")
 
