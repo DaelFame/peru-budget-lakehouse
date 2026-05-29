@@ -1,20 +1,25 @@
 version: '3.8'
 
 services:
-  lakehouse-pipeline:
+  dashboard:
     build:
       context: .
       dockerfile: Dockerfile
-    container_name: mef_lakehouse_worker
-    
-    # Injects variables from the local .env file into the container dynamically
+    container_name: mef_lakehouse_dashboard
     env_file:
       - .env
-      
     volumes:
-      # Mounts the local data directory to /app/data inside the container.
-      # Any Parquet or metadata file generated will instantly persist on your local machine.
       - ./data:/app/data
-      
-    # Run the orchestrated pipeline through the unified main.py entry point
+    ports:
+      - "8501:8501"
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mef_lakehouse_pipeline
+    env_file:
+      - .env
+    volumes:
+      - ./data:/app/data
     command: uv run python main.py
