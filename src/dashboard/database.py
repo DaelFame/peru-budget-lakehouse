@@ -6,7 +6,6 @@ using DuckDB. It centralizes SQL queries, dynamic filter parameters, core KPIs, 
 aggregations, keeping the interface decoupled, secure, and fast.
 """
 
-import os
 import logging
 from pathlib import Path
 from typing import Dict, List, Tuple, Any
@@ -47,13 +46,25 @@ logger.info(f"Dim Institution Path: {DIM_INST_PATH}")
 def _get_connection() -> duckdb.DuckDBPyConnection:
     """
     Establishes and returns a configured in-memory DuckDB connection.
-    Implements dynamic limits on memory and threads for high efficiency.
+    Registers Parquet files as views so the AI Engine can query them by name.
     """
     con = duckdb.connect(database=":memory:")
     con.execute(f"SET threads TO {MAX_THREADS};")
     con.execute(f"SET memory_limit = '{MEMORY_LIMIT}';")
+    
+    # Registro de todas las tablas del esquema Estrella como vistas
+    # Esto permite que el motor de IA haga JOINs sobre estos nombres
+    con.execute(f"CREATE OR REPLACE VIEW fact_presupuesto AS SELECT * FROM '{FACT_PATH}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_geografia AS SELECT * FROM '{DIM_GEO_PATH}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_institucion AS SELECT * FROM '{DIM_INST_PATH}'")
+    
+    # Asumimos rutas consistentes para el resto de dimensiones basadas en tu configuración
+    # Si estas variables no existen, reemplaza por la ruta directa: 'data/03_gold/dim_programatica.parquet'
+    con.execute(f"CREATE OR REPLACE VIEW dim_programatica AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_programatica.parquet')}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_economica AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_economica.parquet')}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_financiamiento AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_financiamiento.parquet')}'")
+    
     return con
-
 
 def _build_where_clause(
     year: Any = None,
@@ -82,9 +93,16 @@ def _build_where_clause(
     where_clauses = []
     params = {}
 
+    # Block fiscal year 2026 to prevent duplicate metrics from cloned source data.
+    where_clauses.append("f.ano_eje <= 2025")
+
     if year is not None and str(year).strip().upper() != "ALL":
-        where_clauses.append("CAST(f.ano_eje AS VARCHAR) = $year")
-        params["year"] = str(year).strip()
+        year_str = str(year).strip()
+        if year_str == "2026":
+            where_clauses.append("1 = 0")
+        else:
+            where_clauses.append("CAST(f.ano_eje AS VARCHAR) = $year")
+            params["year"] = year_str
 
     if government_level is not None and str(government_level).strip().upper() != "ALL":
         where_clauses.append("i.nivel_gobierno_nombre = $government_level")
@@ -128,7 +146,7 @@ def load_filters_data() -> Dict[str, List[Any]]:
     try:
         # Years from Fact table (Fast read, tiny footprint)
         years_df = con.execute(
-            f"SELECT DISTINCT ano_eje FROM '{FACT_PATH}' WHERE ano_eje IS NOT NULL ORDER BY ano_eje DESC"
+            f"SELECT DISTINCT ano_eje FROM '{FACT_PATH}' WHERE ano_eje IS NOT NULL AND ano_eje <= 2025 ORDER BY ano_eje DESC"
         ).df()
         
         # Government levels from Institution Dim

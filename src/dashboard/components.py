@@ -7,7 +7,7 @@ clear visual hierarchies, and high contrast labels).
 """
 
 import logging
-from typing import Dict, Any
+from typing import Dict
 
 import streamlit as st
 import pandas as pd
@@ -364,3 +364,336 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
 
     # Compliant with latest Streamlit parameters (width="stretch")
     st.plotly_chart(fig, width="stretch")
+
+
+# ----------------------------------------------------
+# 5. AI RESPONSE ADAPTER & HELPER FUNCTIONS
+# ----------------------------------------------------
+def _prepare_ranking_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Dynamically maps a DataFrame's columns to ['dimension', 'total_monto']
+    by inferring the categorical (dimension) and numeric (total_monto) columns.
+    """
+    cols = list(df.columns)
+    if len(cols) < 2:
+        return df
+
+    numeric_col = None
+    categorical_col = None
+
+    if "total_monto" in cols:
+        numeric_col = "total_monto"
+    if "dimension" in cols:
+        categorical_col = "dimension"
+
+    if not numeric_col or not categorical_col:
+        for col in cols:
+            if pd.api.types.is_numeric_dtype(df[col]) and not numeric_col:
+                numeric_col = col
+            elif not categorical_col:
+                categorical_col = col
+
+    if not numeric_col:
+        numeric_col = cols[1] if len(cols) > 1 else cols[0]
+    if not categorical_col:
+        categorical_col = cols[0]
+
+    if numeric_col == categorical_col:
+        remaining = [c for c in cols if c != numeric_col]
+        if remaining:
+            categorical_col = remaining[0]
+
+    rename_dict = {categorical_col: "dimension", numeric_col: "total_monto"}
+    return df.rename(columns=rename_dict)[["dimension", "total_monto"]]
+
+
+def _prepare_comparison_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Maps columns to ['dimension', 'pim', 'devengado'] dynamically.
+    """
+    cols = list(df.columns)
+    if len(cols) < 3:
+        return df
+
+    dim_col = None
+    pim_col = None
+    dev_col = None
+
+    for col in cols:
+        col_lower = str(col).lower()
+        if "pim" in col_lower:
+            pim_col = col
+        elif "dev" in col_lower or "exec" in col_lower or "monto" in col_lower:
+            dev_col = col
+        elif "dim" in col_lower or "nombre" in col_lower or "sector" in col_lower or "dept" in col_lower or "gov" in col_lower:
+            dim_col = col
+
+    remaining_numeric = [c for c in cols if pd.api.types.is_numeric_dtype(df[c])]
+    remaining_non_numeric = [c for c in cols if not pd.api.types.is_numeric_dtype(df[c])]
+
+    if not dim_col:
+        dim_col = remaining_non_numeric[0] if remaining_non_numeric else cols[0]
+    if not pim_col:
+        pim_col = [c for c in remaining_numeric if c != dev_col][0] if len([c for c in remaining_numeric if c != dev_col]) > 0 else cols[1]
+    if not dev_col:
+        dev_col = [c for c in remaining_numeric if c != pim_col][0] if len([c for c in remaining_numeric if c != pim_col]) > 0 else cols[2]
+
+    rename_map = {dim_col: "dimension", pim_col: "pim", dev_col: "devengado"}
+    return df.rename(columns=rename_map)[["dimension", "pim", "devengado"]]
+
+
+def _prepare_geographic_df(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    Maps columns to ['department', 'fiscal_year', 'pim', 'devengado', 'execution_rate'] dynamically.
+    """
+    cols = list(df.columns)
+    dept_col = None
+    year_col = None
+    rate_col = None
+    pim_col = None
+    dev_col = None
+
+    for col in cols:
+        col_lower = str(col).lower()
+        if "dept" in col_lower or "geo" in col_lower or "name" in col_lower or "prov" in col_lower or "dist" in col_lower:
+            dept_col = col
+        elif "year" in col_lower or "ano" in col_lower or "eje" in col_lower:
+            year_col = col
+        elif "rate" in col_lower or "porcent" in col_lower or "tasa" in col_lower or "ejec" in col_lower:
+            rate_col = col
+        elif "pim" in col_lower:
+            pim_col = col
+        elif "dev" in col_lower or "monto" in col_lower:
+            dev_col = col
+
+    if not dept_col:
+        dept_col = cols[0]
+    if not year_col:
+        year_col = cols[1] if len(cols) > 1 else cols[0]
+    if not pim_col:
+        pim_col = cols[2] if len(cols) > 2 else cols[0]
+    if not dev_col:
+        dev_col = cols[3] if len(cols) > 3 else cols[0]
+    if not rate_col:
+        rate_col = cols[4] if len(cols) > 4 else cols[0]
+
+    rename_map = {
+        dept_col: "department",
+        year_col: "fiscal_year",
+        pim_col: "pim",
+        dev_col: "devengado",
+        rate_col: "execution_rate"
+    }
+
+    res_df = df.rename(columns=rename_map).copy()
+
+    if "execution_rate" not in res_df.columns or res_df["execution_rate"].isna().all():
+        if "pim" in res_df.columns and "devengado" in res_df.columns:
+            res_df["execution_rate"] = (res_df["devengado"] / res_df["pim"].replace(0, float('nan'))) * 100.0
+            res_df["execution_rate"] = res_df["execution_rate"].fillna(0.0)
+
+    expected_cols = ["department", "fiscal_year", "pim", "devengado", "execution_rate"]
+    safe_cols = [c for c in expected_cols if c in res_df.columns]
+    return res_df[safe_cols]
+
+
+def _render_trend_line_chart(df: pd.DataFrame, lang_dict: dict = None) -> None:
+    """
+    Renders a premium, minimal timeseries trend line chart using Plotly.
+    """
+    if lang_dict is None:
+        lang_dict = {}
+
+    cols = list(df.columns)
+    if len(cols) < 2:
+        st.warning("Insufficient data columns to plot trend line chart.")
+        return
+
+    x_col = None
+    y_col = None
+
+    for col in cols:
+        col_lower = str(col).lower()
+        if "year" in col_lower or "ano" in col_lower or "mes" in col_lower or "fecha" in col_lower or "date" in col_lower:
+            x_col = col
+            break
+
+    if not x_col:
+        x_col = cols[0]
+
+    y_cols = [c for c in cols if c != x_col and pd.api.types.is_numeric_dtype(df[c])]
+    if not y_cols:
+        y_cols = [cols[1]] if len(cols) > 1 else [cols[0]]
+
+    fig = go.Figure()
+    colors = [UI_COLORS.get("primary", "#8B0000"), "#475569", "#0F172A"]
+
+    for idx, y_col in enumerate(y_cols[:3]):
+        fig.add_trace(
+            go.Scatter(
+                x=df[x_col],
+                y=df[y_col],
+                mode="lines+markers",
+                name=str(y_col).replace("_", " ").title(),
+                line=dict(color=colors[idx % len(colors)], width=3),
+                marker=dict(size=7, symbol="circle"),
+                hovertemplate="%{x}: S/. %{y:,.2f}<extra></extra>"
+            )
+        )
+
+    fig.update_layout(
+        xaxis=dict(
+            showgrid=False,
+            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor="#F1F5F9",
+            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=350,
+    )
+
+    st.plotly_chart(fig, width="stretch")
+
+
+def _route_visualization(intent: str, chart_type: str, chart_title: str, df: pd.DataFrame, lang_dict: dict) -> None:
+    """
+    Deterministic visualization router. Maps AI intent to Plotly components.
+    """
+    if chart_title and isinstance(chart_title, str) and chart_title.strip():
+        st.markdown(f"**{chart_title.strip()}**")
+
+    intent_lower = str(intent).lower() if intent else ""
+    type_lower = str(chart_type).lower() if chart_type else ""
+
+    if intent_lower == "ranking" or type_lower == "horizontal_bar":
+        try:
+            ranking_df = _prepare_ranking_df(df)
+            render_top_concentrations(ranking_df, lang_dict)
+        except Exception as e:
+            logger.error("Error in ranking visualization rendering: %s", e)
+
+    elif intent_lower == "comparison" or type_lower == "grouped_bar":
+        try:
+            comp_df = _prepare_comparison_df(df)
+            render_execution_variance(comp_df, lang_dict)
+        except Exception as e:
+            logger.error("Error in comparison visualization rendering: %s", e)
+
+    elif intent_lower == "geographic" or type_lower == "heatmap":
+        try:
+            geo_df = _prepare_geographic_df(df)
+            render_geographic_heatmap(geo_df)
+        except Exception as e:
+            logger.error("Error in geographic visualization rendering: %s", e)
+
+    elif intent_lower == "trend" or type_lower == "line":
+        try:
+            _render_trend_line_chart(df, lang_dict)
+        except Exception as e:
+            logger.error("Error in trend line visualization rendering: %s", e)
+
+    else:
+        logger.warning("Unsupported or unknown visualization intent: %s / chart_type: %s", intent, chart_type)
+
+
+def _set_pending_followup(label: str) -> None:
+    """
+    Callback function for follow-up buttons.
+    Sets the selected follow-up as the pending prompt to be processed in the next rerun.
+    """
+    st.session_state.pending_prompt = label
+
+
+def render_ai_response(summary_data: dict, lang_dict: dict = None) -> None:
+    """
+    Main adapter entry point. Renders AI response step-by-step defensively.
+    """
+    if not isinstance(summary_data, dict):
+        logger.warning("render_ai_response received invalid summary_data type: %s", type(summary_data))
+        return
+    if lang_dict is None:
+        lang_dict = {}
+
+    try:
+        # 1. Title
+        title = summary_data.get("title")
+        if title and isinstance(title, str) and title.strip():
+            st.subheader(title.strip())
+
+        # 2. Executive Summary
+        summary = summary_data.get("executive_summary")
+        if summary and isinstance(summary, str) and summary.strip():
+            st.markdown(summary.strip())
+
+        # 3. KPI Metric
+        main_metric = summary_data.get("main_metric")
+        if isinstance(main_metric, dict):
+            label = main_metric.get("label")
+            val_formatted = main_metric.get("formatted")
+            val_numeric = main_metric.get("value")
+            if label and isinstance(label, str):
+                if val_formatted and isinstance(val_formatted, str):
+                    st.metric(label=label.strip(), value=val_formatted.strip())
+                elif val_numeric is not None:
+                    try:
+                        val_str = format_boardroom_currency(float(val_numeric), lang_dict)
+                        st.metric(label=label.strip(), value=val_str)
+                    except Exception:
+                        pass
+
+        # 4. Visualization
+        chart = summary_data.get("chart")
+        intent = summary_data.get("intent")
+        if isinstance(chart, dict):
+            chart_data = chart.get("data")
+            chart_type = chart.get("type")
+            chart_title = chart.get("title")
+            if chart_data and isinstance(chart_data, list):
+                try:
+                    df = pd.DataFrame(chart_data)
+                    if not df.empty:
+                        _route_visualization(intent, chart_type, chart_title, df, lang_dict)
+                except Exception as e:
+                    logger.error("Failed to parse and render visualization: %s", e)
+
+        # 5. Insights
+        insights = summary_data.get("insights")
+        if isinstance(insights, list) and insights:
+            valid_insights = [i.strip() for i in insights if isinstance(i, str) and i.strip()]
+            if valid_insights:
+                st.markdown(f"**{lang_dict.get('insights_title', 'Key Insights')}**")
+                for insight in valid_insights:
+                    st.markdown(f"- {insight}")
+
+        # 6. Followups
+        followups = summary_data.get("followups")
+        if isinstance(followups, list) and followups:
+            valid_followups = [f.strip() for f in followups if isinstance(f, str) and f.strip()]
+            if valid_followups:
+                cols = st.columns(len(valid_followups))
+                for idx, label in enumerate(valid_followups):
+                    with cols[idx]:
+                        clean_label = "".join(c for c in label if c.isalnum())[:20]
+                        st.button(
+                            label,
+                            key=f"ai_followup_{idx}_{clean_label}",
+                            use_container_width=True,
+                            on_click=_set_pending_followup,
+                            args=(label,)
+                        )
+
+    except Exception as err:
+        logger.error("Unhandled error in render_ai_response adapter: %s", err)

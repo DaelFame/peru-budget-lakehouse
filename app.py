@@ -9,6 +9,7 @@ data extraction and premium Plotly Graph Objects visualizations.
 import os
 import sys
 import logging
+import json
 import streamlit as st
 
 # Professional logging
@@ -30,9 +31,91 @@ from dashboard.components import (
     render_kpi_cards,
     render_top_concentrations,
     render_execution_variance,
-    render_geographic_heatmap
+    render_geographic_heatmap,
+    render_ai_response
 )
 from dashboard.theme import UI_COLORS, FONT_FAMILY
+
+# ----------------------------------------------------
+# AI RESPONSE DEFENSIVE INTEGRATION HELPERS
+# ----------------------------------------------------
+def safe_parse_payload(payload):
+    """
+    Safely parses a payload (dictionary or string) into a valid AI contract dict.
+    Returns the parsed dictionary if valid, otherwise None.
+    """
+    if isinstance(payload, dict):
+        if "intent" in payload:
+            return payload
+        return None
+
+    if not isinstance(payload, str):
+        return None
+
+    stripped = payload.strip()
+    # Check if we should attempt parsing
+    if not (stripped.startswith("{") or stripped.startswith("```json") or ("{" in stripped and "}" in stripped)):
+        return None
+
+    # Safely strip markdown fences
+    if stripped.startswith("```"):
+        lines = stripped.splitlines()
+        if len(lines) > 2:
+            if lines[0].strip().startswith("```"):
+                lines = lines[1:]
+            if lines[-1].strip() == "```":
+                lines = lines[:-1]
+            stripped = "\n".join(lines).strip()
+        else:
+            stripped = stripped.replace("```json", "").replace("```", "").strip()
+    else:
+        stripped = stripped.strip("`").strip()
+
+    # Extract first { to last }
+    try:
+        first_brace = stripped.index("{")
+        last_brace = stripped.rindex("}")
+        stripped = stripped[first_brace:last_brace + 1].strip()
+    except ValueError:
+        pass
+
+    try:
+        parsed = json.loads(stripped)
+        if isinstance(parsed, dict) and "intent" in parsed:
+            return parsed
+    except Exception:
+        pass
+
+    return None
+
+
+def render_assistant_message(content, lang_dict):
+    """
+    Renders assistant messages using either the premium visualization dashboard
+    or falling back to basic text rendering.
+    """
+    parsed = safe_parse_payload(content)
+    
+    if parsed is not None:
+        try:
+            render_ai_response(parsed, lang_dict)
+            return
+        except Exception as e:
+            logger.error("Error in render_ai_response execution: %s", e)
+            # Silently fall back to text rendering
+            pass
+
+    # Fallback rendering path (for plain string responses, errors, welcome messages, etc.)
+    if isinstance(content, dict):
+        summary = content.get("executive_summary") or content.get("summary")
+        if summary:
+            st.markdown(summary)
+        else:
+            st.json(content)
+    elif isinstance(content, str):
+        st.markdown(content)
+    else:
+        st.write(content)
 
 # ----------------------------------------------------
 # STREAMLIT PAGE CONFIGURATION
@@ -163,6 +246,9 @@ def cached_geographic_heatmap(year, gov_level, sector, dept):
 # MAIN APPLICATION PIPELINE
 # ----------------------------------------------------
 def main():
+    if "pending_prompt" not in st.session_state:
+        st.session_state.pending_prompt = None
+
     # Load and initialize control panel filters from the DuckDB gold layers
     try:
         filters = cached_load_filters()
@@ -233,6 +319,16 @@ def main():
             "chart_dimension": "Dimension",
             "chart_executed_val": "Executed (Devengado)",
             "chart_planned_val": "Planned (PIM)",
+
+            # AI Chat
+            "sec_ai_chat": "AI Budget Analyst",
+            "sub_ai_chat": "Ask natural language questions about the budget data. The AI translates your question into SQL, queries the database, and summarizes the results.",
+            "chat_input_placeholder": "Ask a question about the budget...",
+            "chat_spinner": "Analyzing your question...",
+            "ai_chat_disabled": "Set the GROQ_API_KEY environment variable to enable the AI Budget Analyst.",
+            "chat_show_sql": "View SQL Query",
+            "chat_error_prefix": "Sorry, I could not process your question.",
+            "chat_welcome": "Ask me anything about Peru's national budget! For example: \"What was the total PIM for 2024?\" or \"Which sector had the highest execution rate in 2023?\"",
         }
     else:
         LANG = {
@@ -292,6 +388,16 @@ def main():
             "chart_dimension": "Dimensión",
             "chart_executed_val": "Ejecutado (Devengado)",
             "chart_planned_val": "Planificado (PIM)",
+
+            # AI Chat
+            "sec_ai_chat": "Analista Presupuestal IA",
+            "sub_ai_chat": "Haga preguntas en lenguaje natural sobre los datos presupuestarios. La IA traduce su pregunta a SQL, consulta la base de datos y resume los resultados.",
+            "chat_input_placeholder": "Haga una pregunta sobre el presupuesto...",
+            "chat_spinner": "Analizando su pregunta...",
+            "ai_chat_disabled": "Configure la variable GROQ_API_KEY para habilitar el Analista Presupuestal IA.",
+            "chat_show_sql": "Ver Consulta SQL",
+            "chat_error_prefix": "Lo siento, no pude procesar su pregunta.",
+            "chat_welcome": "¡Pregúnteme cualquier cosa sobre el presupuesto nacional de Perú! Por ejemplo: \"¿Cuál fue el PIM total para 2024?\" o \"¿Qué sector tuvo la tasa de ejecución más alta en 2023?\"",
         }
 
     # ----------------------------------------------------
@@ -470,6 +576,95 @@ def main():
         render_geographic_heatmap(df_geo)
     else:
         st.info(LANG["no_heatmap_data"])
+
+    # ----------------------------------------------------
+    # LAYER 4: AI-POWERED CONVERSATIONAL BUDGET ANALYST
+    # ----------------------------------------------------
+    st.markdown("---")
+    st.markdown(f'<div class="section-title">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+        f"{LANG['sub_ai_chat']}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    api_key = os.environ.get("GROQ_API_KEY")
+    if not api_key:
+        st.info(LANG["ai_chat_disabled"])
+    else:
+        lazy_init_engine(api_key)
+        if "chat_history" not in st.session_state:
+            st.session_state.chat_history = []
+
+        for msg in st.session_state.chat_history:
+            with st.chat_message(msg["role"]):
+                if msg["role"] == "user":
+                    st.markdown(msg["content"])
+                else:
+                    render_assistant_message(msg["content"], LANG)
+
+        if not st.session_state.chat_history:
+            with st.chat_message("assistant"):
+                render_assistant_message(LANG["chat_welcome"], LANG)
+
+        active_prompt = None
+        if st.session_state.get("pending_prompt"):
+            active_prompt = st.session_state.pending_prompt
+            # ATOMIC CONSUMPTION
+            st.session_state.pending_prompt = None
+        else:
+            active_prompt = st.chat_input(LANG["chat_input_placeholder"])
+
+        if active_prompt:
+            st.session_state.chat_history.append({"role": "user", "content": active_prompt})
+            with st.chat_message("user"):
+                st.markdown(active_prompt)
+
+            with st.chat_message("assistant"):
+                with st.spinner(LANG["chat_spinner"]):
+                    chat_lang = "es" if LANG["lang_name"] == "Español" else "en"
+                    
+                    # Convert any dictionary content to string for the LLM history to avoid API crash
+                    sanitized_history = []
+                    for msg in st.session_state.chat_history[:-1]:
+                        msg_copy = msg.copy()
+                        if isinstance(msg_copy["content"], dict):
+                            summary = msg_copy["content"].get("executive_summary") or msg_copy["content"].get("summary")
+                            if not summary:
+                                summary = json.dumps(msg_copy["content"], ensure_ascii=False)
+                            msg_copy["content"] = summary
+                        sanitized_history.append(msg_copy)
+
+                    result = st.session_state.ai_engine.ask(
+                        question=active_prompt,
+                        lang=chat_lang,
+                        conversation_history=sanitized_history,
+                    )
+
+                if result["success"]:
+                    render_assistant_message(result["summary"], LANG)
+                    response_text = result["summary"]
+                else:
+                    msg = f"{LANG['chat_error_prefix']}: {result['error']}"
+                    st.error(msg)
+                    response_text = msg
+
+            st.session_state.chat_history.append(
+                {"role": "assistant", "content": response_text}
+            )
+
+
+def lazy_init_engine(api_key: str) -> None:
+    """Initialises the AIEngine once and caches it in session state."""
+    if "ai_engine" in st.session_state:
+        return
+    from dashboard.database import _get_connection
+    from dashboard.ai_engine import AIEngine
+    st.session_state.ai_engine = AIEngine(
+        api_key=api_key,
+        db_connect_fn=_get_connection,
+    )
 
 
 if __name__ == "__main__":
