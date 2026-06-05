@@ -366,13 +366,10 @@ class AIEngine:
 
     def _execute(self, sql: str) -> tuple[list[dict], int]:
         con = self._db_connect()
-        try:
-            result = con.execute(sql).fetchall()
-            columns = [desc[0] for desc in con.description] if con.description else []
-            rows = [dict(zip(columns, row)) for row in result[: self._max_rows]]
-            return rows, len(result)
-        finally:
-            con.close()
+        result = con.execute(sql).fetchall()
+        columns = [desc[0] for desc in con.description] if con.description else []
+        rows = [dict(zip(columns, row)) for row in result[: self._max_rows]]
+        return rows, len(result)
 
     def _synthesize(
         self,

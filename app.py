@@ -659,11 +659,11 @@ def lazy_init_engine(api_key: str) -> None:
     """Initialises the AIEngine once and caches it in session state."""
     if "ai_engine" in st.session_state:
         return
-    from dashboard.database import _get_connection
+    from dashboard.database import get_connection
     from dashboard.ai_engine import AIEngine
     st.session_state.ai_engine = AIEngine(
         api_key=api_key,
-        db_connect_fn=_get_connection,
+        db_connect_fn=get_connection,
     )
 
 
