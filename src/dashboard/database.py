@@ -7,36 +7,36 @@ aggregations, keeping the interface decoupled, secure, and fast.
 """
 
 import logging
-from pathlib import Path
 from typing import Dict, List, Tuple, Any
 
 import duckdb
 import pandas as pd
+import streamlit as st
+
+from config import (
+    GOLD_FACT_PATH,
+    GOLD_DIM_GEO_PATH,
+    GOLD_DIM_INST_PATH,
+    GOLD_DIM_PROG_PATH,
+    GOLD_DIM_ECON_PATH,
+    GOLD_DIM_FIN_PATH,
+    MAX_THREADS,
+    MEMORY_LIMIT,
+)
 
 # Professional logging setup
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
 
 # ----------------------------------------------------
-# CONFIGURATION & UNIFIED PARQUET STAR SCHEMA PATHS
+# STAR SCHEMA PATHS (Single Source of Truth: config.py)
 # ----------------------------------------------------
-try:
-    import config
-    logger.info("Successfully imported project configuration.")
-    # Read the explicit Gold Star Schema paths from config.py
-    FACT_PATH = str(config.GOLD_FACT_PATH)
-    DIM_GEO_PATH = str(config.GOLD_DIM_GEO_PATH)
-    DIM_INST_PATH = str(config.GOLD_DIM_INST_PATH)
-    MAX_THREADS = getattr(config, "MAX_THREADS", 4)
-    MEMORY_LIMIT = getattr(config, "MEMORY_LIMIT", "4GB")
-except ImportError:
-    logger.warning("Project config.py not found in sys.path. Calculating local paths...")
-    PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
-    FACT_PATH = str(PROJECT_ROOT / "data" / "03_gold" / "fact_presupuesto.parquet")
-    DIM_GEO_PATH = str(PROJECT_ROOT / "data" / "03_gold" / "dim_geografia.parquet")
-    DIM_INST_PATH = str(PROJECT_ROOT / "data" / "03_gold" / "dim_institucion.parquet")
-    MAX_THREADS = 4
-    MEMORY_LIMIT = "4GB"
+FACT_PATH = str(GOLD_FACT_PATH)
+DIM_GEO_PATH = str(GOLD_DIM_GEO_PATH)
+DIM_INST_PATH = str(GOLD_DIM_INST_PATH)
+DIM_PROG_PATH = str(GOLD_DIM_PROG_PATH)
+DIM_ECON_PATH = str(GOLD_DIM_ECON_PATH)
+DIM_FIN_PATH = str(GOLD_DIM_FIN_PATH)
 
 logger.info(f"Fact Table Path: {FACT_PATH}")
 logger.info(f"Dim Geography Path: {DIM_GEO_PATH}")
@@ -57,14 +57,18 @@ def _get_connection() -> duckdb.DuckDBPyConnection:
     con.execute(f"CREATE OR REPLACE VIEW fact_presupuesto AS SELECT * FROM '{FACT_PATH}'")
     con.execute(f"CREATE OR REPLACE VIEW dim_geografia AS SELECT * FROM '{DIM_GEO_PATH}'")
     con.execute(f"CREATE OR REPLACE VIEW dim_institucion AS SELECT * FROM '{DIM_INST_PATH}'")
-    
-    # Asumimos rutas consistentes para el resto de dimensiones basadas en tu configuración
-    # Si estas variables no existen, reemplaza por la ruta directa: 'data/03_gold/dim_programatica.parquet'
-    con.execute(f"CREATE OR REPLACE VIEW dim_programatica AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_programatica.parquet')}'")
-    con.execute(f"CREATE OR REPLACE VIEW dim_economica AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_economica.parquet')}'")
-    con.execute(f"CREATE OR REPLACE VIEW dim_financiamiento AS SELECT * FROM '{str(Path(FACT_PATH).parent / 'dim_financiamiento.parquet')}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_programatica AS SELECT * FROM '{DIM_PROG_PATH}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_economica AS SELECT * FROM '{DIM_ECON_PATH}'")
+    con.execute(f"CREATE OR REPLACE VIEW dim_financiamiento AS SELECT * FROM '{DIM_FIN_PATH}'")
     
     return con
+
+
+@st.cache_resource
+def get_connection() -> duckdb.DuckDBPyConnection:
+    """Cached singleton connection provider for Streamlit sessions."""
+    return _get_connection()
+
 
 def _build_where_clause(
     year: Any = None,
@@ -141,27 +145,27 @@ def load_filters_data() -> Dict[str, List[Any]]:
         Dict[str, List[Any]]: Dictionary with sorted lists of values.
     """
     logger.info("Extracting unique filters directly from Star Schema source Parquet tables...")
-    con = _get_connection()
+    con = get_connection()
 
     try:
         # Years from Fact table (Fast read, tiny footprint)
         years_df = con.execute(
-            f"SELECT DISTINCT ano_eje FROM '{FACT_PATH}' WHERE ano_eje IS NOT NULL AND ano_eje <= 2025 ORDER BY ano_eje DESC"
+            "SELECT DISTINCT ano_eje FROM fact_presupuesto WHERE ano_eje IS NOT NULL AND ano_eje <= 2025 ORDER BY ano_eje DESC"
         ).df()
         
         # Government levels from Institution Dim
         gov_levels_df = con.execute(
-            f"SELECT DISTINCT nivel_gobierno_nombre FROM '{DIM_INST_PATH}' WHERE nivel_gobierno_nombre IS NOT NULL ORDER BY 1 ASC"
+            "SELECT DISTINCT nivel_gobierno_nombre FROM dim_institucion WHERE nivel_gobierno_nombre IS NOT NULL ORDER BY 1 ASC"
         ).df()
         
         # Sectors from Institution Dim
         sectors_df = con.execute(
-            f"SELECT DISTINCT sector_nombre FROM '{DIM_INST_PATH}' WHERE sector_nombre IS NOT NULL ORDER BY 1 ASC"
+            "SELECT DISTINCT sector_nombre FROM dim_institucion WHERE sector_nombre IS NOT NULL ORDER BY 1 ASC"
         ).df()
         
         # Departments from Geography Dim
         departments_df = con.execute(
-            f"SELECT DISTINCT departamento_ejecutora_nombre FROM '{DIM_GEO_PATH}' WHERE departamento_ejecutora_nombre IS NOT NULL ORDER BY 1 ASC"
+            "SELECT DISTINCT departamento_ejecutora_nombre FROM dim_geografia WHERE departamento_ejecutora_nombre IS NOT NULL ORDER BY 1 ASC"
         ).df()
 
         filters = {
@@ -175,8 +179,6 @@ def load_filters_data() -> Dict[str, List[Any]]:
     except Exception as e:
         logger.error(f"Error loading dropdown filters from Star Schema: {str(e)}")
         raise
-    finally:
-        con.close()
 
 
 # ----------------------------------------------------
@@ -207,7 +209,7 @@ def load_dashboard_metrics(
         Dict[str, float]: Calculated metrics dictionary.
     """
     logger.info("Calculating Core KPIs from Gold Star Schema...")
-    con = _get_connection()
+    con = get_connection()
     where_sql, params = _build_where_clause(year, government_level, sector, department)
 
     # Perform joins from Fact to Geography and Institution using hashed surrogate keys
@@ -215,9 +217,9 @@ def load_dashboard_metrics(
         SELECT 
             COALESCE(SUM(CASE WHEN lower(f.fase) IN ('pim', 'certificado') THEN f.monto ELSE 0.0 END), 0.0) AS pim,
             COALESCE(SUM(CASE WHEN lower(f.fase) = 'devengado' THEN f.monto ELSE 0.0 END), 0.0) AS devengado
-        FROM '{FACT_PATH}' f
-        LEFT JOIN '{DIM_GEO_PATH}' g ON f.sk_geografia_id = g.sk_geografia_id
-        LEFT JOIN '{DIM_INST_PATH}' i ON f.sk_institucion_id = i.sk_institucion_id
+        FROM fact_presupuesto f
+        LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
+        LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
         {where_sql}
     """
 
@@ -240,8 +242,6 @@ def load_dashboard_metrics(
     except Exception as e:
         logger.error(f"Error calculating dashboard metrics from Star Schema: {str(e)}")
         raise
-    finally:
-        con.close()
 
 
 # ----------------------------------------------------
@@ -279,7 +279,7 @@ def get_top_concentrations_data(
         )
 
     logger.info(f"Querying concentrations grouped by {group_by_column} from Star Schema...")
-    con = _get_connection()
+    con = get_connection()
     where_sql, params = _build_where_clause(year, government_level, sector, department)
 
     # Route dimension table prefixes based on targeted grouping columns
@@ -289,9 +289,9 @@ def get_top_concentrations_data(
         SELECT 
             {alias}.{group_by_column} AS dimension,
             COALESCE(SUM(CASE WHEN lower(f.fase) IN ('pim', 'certificado') THEN f.monto ELSE 0.0 END), 0.0) AS total_monto
-        FROM '{FACT_PATH}' f
-        LEFT JOIN '{DIM_GEO_PATH}' g ON f.sk_geografia_id = g.sk_geografia_id
-        LEFT JOIN '{DIM_INST_PATH}' i ON f.sk_institucion_id = i.sk_institucion_id
+        FROM fact_presupuesto f
+        LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
+        LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
         {where_sql}
         GROUP BY 1
         ORDER BY total_monto DESC
@@ -305,8 +305,6 @@ def get_top_concentrations_data(
     except Exception as e:
         logger.error(f"Error querying concentrations from Star Schema: {str(e)}")
         raise
-    finally:
-        con.close()
 
 
 def get_execution_variance_data(
@@ -342,7 +340,7 @@ def get_execution_variance_data(
         )
 
     logger.info(f"Querying comparative variance grouped by {dimension_column} from Star Schema...")
-    con = _get_connection()
+    con = get_connection()
     where_sql, params = _build_where_clause(year, government_level, sector, department)
 
     alias = "g" if dimension_column == "departamento_ejecutora_nombre" else "i"
@@ -352,9 +350,9 @@ def get_execution_variance_data(
             {alias}.{dimension_column} AS dimension,
             COALESCE(SUM(CASE WHEN lower(f.fase) IN ('pim', 'certificado') THEN f.monto ELSE 0.0 END), 0.0) AS pim,
             COALESCE(SUM(CASE WHEN lower(f.fase) = 'devengado' THEN f.monto ELSE 0.0 END), 0.0) AS devengado
-        FROM '{FACT_PATH}' f
-        LEFT JOIN '{DIM_GEO_PATH}' g ON f.sk_geografia_id = g.sk_geografia_id
-        LEFT JOIN '{DIM_INST_PATH}' i ON f.sk_institucion_id = i.sk_institucion_id
+        FROM fact_presupuesto f
+        LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
+        LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
         {where_sql}
         GROUP BY 1
         ORDER BY pim DESC
@@ -367,8 +365,6 @@ def get_execution_variance_data(
     except Exception as e:
         logger.error(f"Error querying comparative variance from Star Schema: {str(e)}")
         raise
-    finally:
-        con.close()
 
 
 def get_geographic_heatmap_data(
@@ -392,7 +388,7 @@ def get_geographic_heatmap_data(
                       ['department', 'fiscal_year', 'pim', 'devengado', 'execution_rate'].
     """
     logger.info("Querying geographic heatmap data from Star Schema...")
-    con = _get_connection()
+    con = get_connection()
     where_sql, params = _build_where_clause(year, government_level, sector, department)
 
     query = f"""
@@ -407,9 +403,9 @@ def get_geographic_heatmap_data(
                       SUM(CASE WHEN lower(f.fase) IN ('pim', 'certificado') THEN f.monto ELSE 0.0 END)) * 100.0
                 ELSE 0.0 
             END AS execution_rate
-        FROM '{FACT_PATH}' f
-        LEFT JOIN '{DIM_GEO_PATH}' g ON f.sk_geografia_id = g.sk_geografia_id
-        LEFT JOIN '{DIM_INST_PATH}' i ON f.sk_institucion_id = i.sk_institucion_id
+        FROM fact_presupuesto f
+        LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
+        LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
         {where_sql}
         GROUP BY 1, 2
         ORDER BY department ASC, fiscal_year DESC
@@ -422,5 +418,3 @@ def get_geographic_heatmap_data(
     except Exception as e:
         logger.error(f"Error querying geographic heatmap data from Star Schema: {str(e)}")
         raise
-    finally:
-        con.close()

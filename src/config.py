@@ -50,14 +50,45 @@ INTERMEDIATE_SILVER_PATH = SILVER_DIR / "mef_consolidated_silver.parquet"
 # Temporary Processing Directories
 TMP_CONSOLIDATED_DIR = SILVER_DIR / "00_tmp_consolidated"
 TMP_UNPIVOT_DIR = SILVER_DIR / "00_tmp_unpivot"
+# =====================================================
+# SMART DATA RESOLVER (PROD → DEMO → FAIL SAFE)
+# =====================================================
 
-# Gold Layer Star Schema Paths
-GOLD_FACT_PATH = GOLD_DIR / "fact_presupuesto.parquet"
-GOLD_DIM_GEO_PATH = GOLD_DIR / "dim_geografia.parquet"
-GOLD_DIM_INST_PATH = GOLD_DIR / "dim_institucion.parquet"
-GOLD_DIM_PROG_PATH = GOLD_DIR / "dim_programatica.parquet"
-GOLD_DIM_ECON_PATH = GOLD_DIR / "dim_economica.parquet"
-GOLD_DIM_FIN_PATH = GOLD_DIR / "dim_financiamiento.parquet"
+def resolve_data_path(filename: str) -> Path:
+    """
+    Data resolution priority:
+    1. Production (data/03_gold)
+    2. Demo fallback (data/00_demo)
+    3. Hard fail with instruction
+    """
+    prod_path = GOLD_DIR / filename
+    demo_path = DATA_DIR / "00_demo" / filename
+
+    if prod_path.exists():
+        return prod_path
+
+    if demo_path.exists():
+        return demo_path
+
+    raise FileNotFoundError(
+        f"Dataset not found: {filename}\n"
+        f"Searched in:\n"
+        f"- {prod_path}\n"
+        f"- {demo_path}\n"
+        f"Please check README or project setup."
+    )
+
+
+# =====================================================
+# GOLD LAYER STAR SCHEMA PATHS (DYNAMIC)
+# =====================================================
+
+GOLD_FACT_PATH = resolve_data_path("fact_presupuesto.parquet")
+GOLD_DIM_GEO_PATH = resolve_data_path("dim_geografia.parquet")
+GOLD_DIM_INST_PATH = resolve_data_path("dim_institucion.parquet")
+GOLD_DIM_PROG_PATH = resolve_data_path("dim_programatica.parquet")
+GOLD_DIM_ECON_PATH = resolve_data_path("dim_economica.parquet")
+GOLD_DIM_FIN_PATH = resolve_data_path("dim_financiamiento.parquet")
 
 # 6. Automated Directory Validation
 for directory in [BRONZE_DIR, SILVER_DIR, GOLD_DIR, TMP_CONSOLIDATED_DIR, TMP_UNPIVOT_DIR]:
