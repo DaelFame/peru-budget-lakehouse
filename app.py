@@ -25,14 +25,20 @@ from dashboard.database import (
     load_dashboard_metrics,
     get_top_concentrations_data,
     get_execution_variance_data,
-    get_geographic_heatmap_data
+    get_geographic_heatmap_data,
+    get_economic_composition_data,
+    get_financing_structure_data,
+    get_programmatic_allocation_data,
 )
 from dashboard.components import (
     render_kpi_cards,
     render_top_concentrations,
     render_execution_variance,
     render_geographic_heatmap,
-    render_ai_response
+    render_economic_composition,
+    render_financing_structure,
+    render_programmatic_allocation,
+    render_ai_response,
 )
 from dashboard.theme import UI_COLORS, FONT_FAMILY
 
@@ -173,15 +179,9 @@ st.markdown(f"""
     [data-testid="metric-container"] div[data-testid="stMetricValue"] {{
         font-size: 2.4rem !important;
         font-weight: 700;
-        color: #1E293B !important;
+        color: #1E293B;
     }}
 
-    /* Underperforming execution rate warning element styling */
-    [data-testid="metric-container"] div[data-testid="stMetricDelta"] {{
-        color: #EF4444 !important;
-        font-size: 0.95rem !important;
-        font-weight: 600 !important;
-    }}
     
     /* Clean sections titles styling */
     .section-title {{
@@ -235,6 +235,35 @@ def cached_execution_variance(dimension, year, gov_level, sector, dept):
 @st.cache_data
 def cached_geographic_heatmap(year, gov_level, sector, dept):
     return get_geographic_heatmap_data(
+        year=year,
+        government_level=gov_level,
+        sector=sector,
+        department=dept
+    )
+
+@st.cache_data
+def cached_economic_composition(year, gov_level, sector, dept):
+    return get_economic_composition_data(
+        year=year,
+        government_level=gov_level,
+        sector=sector,
+        department=dept
+    )
+
+@st.cache_data
+def cached_financing_structure(year, gov_level, sector, dept):
+    return get_financing_structure_data(
+        year=year,
+        government_level=gov_level,
+        sector=sector,
+        department=dept
+    )
+
+@st.cache_data
+def cached_programmatic_allocation(group_by, year, gov_level, sector, dept):
+    return get_programmatic_allocation_data(
+        group_by_level=group_by,
+        limit=10,
         year=year,
         government_level=gov_level,
         sector=sector,
@@ -298,6 +327,20 @@ def main():
             "sec_heatmap": "Geographic Accountability Matrix",
             "sub_heatmap": "Heatmap distribution illustrating execution rates (%) grouped by Executing Department across all available Fiscal Years. Muted shades indicate lower output levels, and deeper Crimson represents solid progress.",
             "no_heatmap_data": "No geographic heatmap data found matching the active filters.",
+
+            "sec_economic": "Economic Classification Composition",
+            "sub_economic": "Budget distribution by economic category (Personnel, Goods & Services, Investment, Debt Service, etc.).",
+            "no_economic_data": "No economic composition data found matching the active filters.",
+
+            "sec_financing": "Financing Source Structure",
+            "sub_financing": "Budget allocation by financing source (Treasury, Loans, Donations, Direct Revenue, etc.).",
+            "no_financing_data": "No financing structure data found matching the active filters.",
+
+            "sec_programmatic": "Programmatic Allocation (Top-N)",
+            "sub_programmatic": "Largest budget allocations by program, project, or government function.",
+            "toggle_prog": "Group Programmatic By",
+            "prog_toggle_options": ["Budget Program", "Project", "Government Function"],
+            "no_prog_data": "No programmatic allocation data found matching the active filters.",
             
             # Financial/Formatting mappings
             "billions_symbol": "B",
@@ -313,6 +356,9 @@ def main():
             "spinner_conc": "Aggregating concentration data...",
             "spinner_var": "Aggregating comparative variance...",
             "spinner_geo": "Generating geographic heatmap...",
+            "spinner_econ": "Aggregating economic composition...",
+            "spinner_fin": "Aggregating financing structure...",
+            "spinner_prog": "Aggregating programmatic allocation...",
             
             # Chart titles & tooltips
             "chart_budget": "Budget",
@@ -367,6 +413,20 @@ def main():
             "sec_heatmap": "Matriz de Responsabilidad Geográfica",
             "sub_heatmap": "Distribución del mapa de calor que ilustra las tasas de ejecución (%) agrupadas por Departamento Ejecutor a lo largo de todos los Años Fiscales disponibles. Los tonos tenues indican niveles de producción más bajos, y el carmesí más profundo representa un progreso sólido.",
             "no_heatmap_data": "No se encontraron datos del mapa de calor geográfico que coincidan con los filtros activos.",
+
+            "sec_economic": "Composición por Clasificación Económica",
+            "sub_economic": "Distribución presupuestal por categoría económica (Personal, Bienes y Servicios, Inversiones, Servicio de la Deuda, etc.).",
+            "no_economic_data": "No se encontraron datos de composición económica que coincidan con los filtros activos.",
+
+            "sec_financing": "Estructura por Fuente de Financiamiento",
+            "sub_financing": "Asignación presupuestal por fuente de financiamiento (Tesoro, Préstamos, Donaciones, Recursos Directamente Recaudados, etc.).",
+            "no_financing_data": "No se encontraron datos de estructura de financiamiento que coincidan con los filtros activos.",
+
+            "sec_programmatic": "Asignación Programática (Top-N)",
+            "sub_programmatic": "Mayores asignaciones presupuestales por programa, proyecto o función de gobierno.",
+            "toggle_prog": "Agrupar Programático Por",
+            "prog_toggle_options": ["Programa Presupuestal", "Proyecto", "Función de Gobierno"],
+            "no_prog_data": "No se encontraron datos de asignación programática que coincidan con los filtros activos.",
             
             # Financial/Formatting mappings
             "billions_symbol": "Mil MM",
@@ -382,6 +442,9 @@ def main():
             "spinner_conc": "Agrupando datos de concentración...",
             "spinner_var": "Agrupando variación comparativa...",
             "spinner_geo": "Generando mapa de calor geográfico...",
+            "spinner_econ": "Agrupando composición económica...",
+            "spinner_fin": "Agrupando estructura de financiamiento...",
+            "spinner_prog": "Agrupando asignación programática...",
             
             # Chart titles & tooltips
             "chart_budget": "Presupuesto",
@@ -481,7 +544,33 @@ def main():
     st.markdown("---")
 
     # ----------------------------------------------------
-    # LAYER 2: ALLOCATION & VARIANCE CHARTS (SIDE-BY-SIDE)
+    # LAYER 2: ECONOMIC COMPOSITION (FULL WIDTH)
+    # ----------------------------------------------------
+    st.markdown(f'<div class="section-title">{LANG["sec_economic"]}</div>', unsafe_allow_html=True)
+    st.markdown(
+        f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+        f"{LANG['sub_economic']}"
+        f"</div>",
+        unsafe_allow_html=True
+    )
+
+    with st.spinner(LANG["spinner_econ"]):
+        df_econ = cached_economic_composition(
+            year=year_filter,
+            gov_level=gov_filter,
+            sector=sector_filter,
+            dept=dept_filter
+        )
+
+    if not df_econ.empty:
+        render_economic_composition(df_econ, LANG)
+    else:
+        st.info(LANG["no_economic_data"])
+
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    # LAYER 3: ALLOCATION & VARIANCE CHARTS (SIDE-BY-SIDE)
     # ----------------------------------------------------
     chart_col1, chart_col2 = st.columns(2)
 
@@ -554,7 +643,72 @@ def main():
     st.markdown("---")
 
     # ----------------------------------------------------
-    # LAYER 3: GEOGRAPHIC ACCOUNTABILITY MATRIX (HEATMAP)
+    # LAYER 4: FINANCING STRUCTURE & PROGRAMMATIC ALLOCATION (SIDE-BY-SIDE)
+    # ----------------------------------------------------
+    fin_col1, fin_col2 = st.columns(2)
+
+    with fin_col1:
+        st.markdown(f'<div class="section-title">{LANG["sec_financing"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"{LANG['sub_financing']}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+        with st.spinner(LANG["spinner_fin"]):
+            df_fin = cached_financing_structure(
+                year=year_filter,
+                gov_level=gov_filter,
+                sector=sector_filter,
+                dept=dept_filter
+            )
+
+        if not df_fin.empty:
+            render_financing_structure(df_fin, LANG)
+        else:
+            st.info(LANG["no_financing_data"])
+
+    with fin_col2:
+        st.markdown(f'<div class="section-title">{LANG["sec_programmatic"]}</div>', unsafe_allow_html=True)
+        st.markdown(
+            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"{LANG['sub_programmatic']}"
+            f"</div>",
+            unsafe_allow_html=True
+        )
+
+        prog_toggle = st.selectbox(
+            LANG["toggle_prog"],
+            options=LANG["prog_toggle_options"],
+            index=0,
+            key="prog_toggle",
+            label_visibility="collapsed"
+        )
+        prog_column = {
+            LANG["prog_toggle_options"][0]: "programa_ppto_nombre",
+            LANG["prog_toggle_options"][1]: "producto_proyecto_nombre",
+            LANG["prog_toggle_options"][2]: "funcion_nombre",
+        }[prog_toggle]
+
+        with st.spinner(LANG["spinner_prog"]):
+            df_prog = cached_programmatic_allocation(
+                group_by=prog_column,
+                year=year_filter,
+                gov_level=gov_filter,
+                sector=sector_filter,
+                dept=dept_filter
+            )
+
+        if not df_prog.empty:
+            render_programmatic_allocation(df_prog, LANG)
+        else:
+            st.info(LANG["no_prog_data"])
+
+    st.markdown("---")
+
+    # ----------------------------------------------------
+    # LAYER 5: GEOGRAPHIC ACCOUNTABILITY MATRIX (HEATMAP)
     # ----------------------------------------------------
     st.markdown(f'<div class="section-title">{LANG["sec_heatmap"]}</div>', unsafe_allow_html=True)
     st.markdown(
@@ -578,7 +732,7 @@ def main():
         st.info(LANG["no_heatmap_data"])
 
     # ----------------------------------------------------
-    # LAYER 4: AI-POWERED CONVERSATIONAL BUDGET ANALYST
+    # LAYER 6: AI-POWERED CONVERSATIONAL BUDGET ANALYST
     # ----------------------------------------------------
     st.markdown("---")
     st.markdown(f'<div class="section-title">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)

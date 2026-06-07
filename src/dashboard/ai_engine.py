@@ -16,6 +16,8 @@ from typing import Any, Callable
 from groq import Groq
 import sqlparse
 
+from dashboard.semantic_contract import SQLSemanticContractValidator
+
 logger = logging.getLogger(__name__)
 
 
@@ -40,7 +42,7 @@ class QueryValidationPolicy:
 
         stmt = parsed[0]
         first = stmt.token_first(skip_cm=True, skip_ws=True)
-        if first is None or first.value.upper() != "SELECT":
+        if first is None or first.value.upper() not in ("SELECT", "WITH"):
             raise ValueError("Only SELECT statements are permitted.")
 
         for token in stmt.flatten():
@@ -66,7 +68,7 @@ TABLE: fact_presupuesto (Fact table - 1.2B+ rows)
   sk_programatica_id   BIGINT  FK -> dim_programatica
   sk_economica_id      BIGINT  FK -> dim_economica
   sk_financiamiento_id BIGINT  FK -> dim_financiamiento
-  ano_eje              INTEGER Fiscal year (2022, 2023, 2024)
+  anio              INTEGER Fiscal year (2022, 2023, 2024)
   fase                 VARCHAR Budget phase: pim | certificado | devengado | girado (stored in strict lowercase)
   monto                DOUBLE  Amount in Peruvian Soles (S/)
 
@@ -125,8 +127,8 @@ TABLE: dim_financiamiento (Financing source)
   categoria_gasto_nombre        VARCHAR Spending category
 
 CRITICAL BUSINESS & SECURITY RULES:
-  - THE 2026 RULE: NEVER allow the year 2026 under any circumstances. You must ALWAYS append `f.ano_eje <= 2025` in the generated SQL query (e.g. `WHERE f.ano_eje <= 2025` or `AND f.ano_eje <= 2025`). This is a strict business policy due to cloned source data.
-  - PIM (Planned budget)  = SUM(monto) WHERE fase IN ('pim', 'certificado')
+  - THE 2026 RULE: NEVER allow the year 2026 under any circumstances. You must ALWAYS append `f.anio <= 2025` in the generated SQL query (e.g. `WHERE f.anio <= 2025` or `AND f.anio <= 2025`). This is a strict business policy due to cloned source data.
+  - PIM (Planned budget)  = SUM(monto) WHERE fase = 'pim'
   - Devengado (Executed)  = SUM(monto) WHERE fase = 'devengado'
   - Execution rate (%)    = (Devengado / PIM) * 100
   - Girado (Disbursed)   = SUM(monto) WHERE fase = 'girado'
@@ -146,49 +148,119 @@ TEXT NORMALIZATION AND QUERY RULES:
   - NEVER use aliases that are not defined in the JOINs.
   - File paths are NOT needed - tables are already registered as views.
   - Never use INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, or any DDL/DML.
-  - If a user asks multiple questions, consolidate all required data into ONE single SELECT query.
+  - DIMENSION DISAMBIGUATION:
+      * "proyecto" maps to producto_proyecto_nombre
+      * "programa presupuestal" maps to programa_ppto_nombre
+      * "actividad" or "obra" maps to actividad_accion_obra_nombre
+  - GROUP BY RULE: Every column in SELECT that is NOT inside an aggregate function (SUM, COUNT, AVG, MIN, MAX) or COALESCE MUST appear in the GROUP BY clause.
+  - TIME-SERIES RULE: For questions involving "trend", "evolution", "avance", "tendencia", or "over time", ALWAYS include f.anio in both SELECT and GROUP BY.
+   - COMPOUND QUESTIONS: For questions that combine ranking with time-series analysis (e.g. "top project and its evolution over time", "top sector and annual trend"), use a CTE (WITH ... AS (...)) to compute the ranking first, then perform the time-series aggregation in a second SELECT. Do NOT try to collapse both into a single SELECT.
+
+ANALYTICAL GRAIN CONSTRAINTS (STRICT - MUST FOLLOW):
+   - Every dimension belongs to exactly ONE grain family:
+       * geography:   dim_geografia (departamento, provincia, distrito)
+       * institution: dim_institucion (sector, nivel_gobierno, pliego, ejecutora)
+       * economic:    dim_economica (generica, subgenerica, especifica)
+       * financing:   dim_financiamiento (fuente, rubro, tipo_recurso, categoria_gasto)
+       * program:     dim_programatica (programa_ppto, producto_proyecto, funcion, actividad)
+   - A single SELECT MUST GROUP BY columns from AT MOST ONE non-time dimension family, optionally plus f.anio.
+   - VALID patterns: (geography), (institution), (economic), (financing), (program), or any of these + anio.
+   - FORBIDDEN patterns: mixing columns from different families (e.g. sector + fuente_financiamiento) in the same GROUP BY.
+   - MULTI-FAMILY QUESTIONS: If the user asks about two different dimensions (e.g. "by sector and financing source"), decompose into one CTE per dimension, then UNION ALL the results.
 
 MULTILINGUAL EXECUTION:
   - Detect the language of the user's prompt and respond entirely in that exact same language.
 
 EXAMPLES:
 Q: What was the total PIM for 2024?
-SQL: SELECT SUM(CASE WHEN f.fase IN ('pim', 'certificado') THEN f.monto ELSE 0 END) AS total_pim FROM fact_presupuesto f WHERE f.ano_eje = 2024 AND f.ano_eje <= 2025
+SQL: SELECT SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS total_pim FROM fact_presupuesto f WHERE f.anio = 2024 AND f.anio <= 2025
 
 Q: Which sector had the highest execution rate in 2023?
 SQL: SELECT i.sector_nombre AS sector,
        SUM(CASE WHEN f.fase = 'devengado' THEN f.monto ELSE 0 END) /
-       NULLIF(SUM(CASE WHEN f.fase IN ('pim', 'certificado') THEN f.monto ELSE 0 END), 0) * 100
+       NULLIF(SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END), 0) * 100
        AS execution_rate
 FROM fact_presupuesto f
 LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
-WHERE f.ano_eje = 2023 AND f.ano_eje <= 2025
+WHERE f.anio = 2023 AND f.anio <= 2025
 GROUP BY sector ORDER BY execution_rate DESC
 
 Q: Show top 5 departments by PIM in 2024
 SQL: SELECT g.departamento_ejecutora_nombre AS department,
-       SUM(CASE WHEN f.fase IN ('pim', 'certificado') THEN f.monto ELSE 0 END) AS total_pim
+       SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS total_pim
 FROM fact_presupuesto f
 LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
-WHERE f.ano_eje = 2024 AND f.ano_eje <= 2025
+WHERE f.anio = 2024 AND f.anio <= 2025
 GROUP BY department ORDER BY total_pim DESC LIMIT 5
 
 Q: Compare PIM against Devengado for each government level in 2024
 SQL: SELECT i.nivel_gobierno_nombre AS government_level,
-       SUM(CASE WHEN f.fase IN ('pim', 'certificado') THEN f.monto ELSE 0 END) AS pim,
+       SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS pim,
        SUM(CASE WHEN f.fase = 'devengado' THEN f.monto ELSE 0 END) AS devengado
 FROM fact_presupuesto f
 LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
-WHERE f.ano_eje = 2024 AND f.ano_eje <= 2025
+WHERE f.anio = 2024 AND f.anio <= 2025
 GROUP BY government_level ORDER BY pim DESC
 
 Q: What is the budget by financing source for 2024?
 SQL: SELECT fi.fuente_financiamiento_nombre AS financing_source,
-       SUM(CASE WHEN f.fase IN ('pim', 'certificado') THEN f.monto ELSE 0 END) AS total_pim
+       SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS total_pim
 FROM fact_presupuesto f
 LEFT JOIN dim_financiamiento fi ON f.sk_financiamiento_id = fi.sk_financiamiento_id
-WHERE f.ano_eje = 2024 AND f.ano_eje <= 2025
+WHERE f.anio = 2024 AND f.anio <= 2025
 GROUP BY financing_source ORDER BY total_pim DESC
+
+Q: Show the top local government project in Arequipa and its annual spending trend.
+SQL: WITH top_project AS (
+  SELECT p.sk_programatica_id,
+         p.producto_proyecto_nombre AS proyecto,
+         SUM(CASE WHEN f.fase = 'devengado' THEN f.monto ELSE 0 END) AS total_gastado
+  FROM fact_presupuesto f
+  LEFT JOIN dim_geografia g ON f.sk_geografia_id = g.sk_geografia_id
+  LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
+  LEFT JOIN dim_programatica p ON f.sk_programatica_id = p.sk_programatica_id
+  WHERE i.nivel_gobierno_nombre ILIKE '%local%'
+    AND g.departamento_ejecutora_nombre ILIKE '%arequipa%'
+    AND f.anio <= 2025
+  GROUP BY p.sk_programatica_id, p.producto_proyecto_nombre
+  ORDER BY total_gastado DESC
+  LIMIT 1
+)
+SELECT tp.proyecto,
+       f.anio,
+       SUM(CASE WHEN f.fase = 'devengado' THEN f.monto ELSE 0 END) AS gasto_anual,
+       SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS pim_anual
+FROM fact_presupuesto f
+LEFT JOIN dim_programatica p ON f.sk_programatica_id = p.sk_programatica_id
+CROSS JOIN top_project tp
+WHERE p.sk_programatica_id = tp.sk_programatica_id
+  AND f.anio <= 2025
+GROUP BY tp.proyecto, f.anio
+ORDER BY f.anio
+
+Q: Compare PIM by sector and financing source (multi-family - decompose into separate CTEs)
+SQL: WITH sector_pim AS (
+  SELECT i.sector_nombre AS name,
+         SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS pim
+  FROM fact_presupuesto f
+  LEFT JOIN dim_institucion i ON f.sk_institucion_id = i.sk_institucion_id
+  WHERE f.anio <= 2025
+  GROUP BY name
+  ORDER BY pim DESC LIMIT 10
+),
+source_pim AS (
+  SELECT fi.fuente_financiamiento_nombre AS name,
+         SUM(CASE WHEN f.fase = 'pim' THEN f.monto ELSE 0 END) AS pim
+  FROM fact_presupuesto f
+  LEFT JOIN dim_financiamiento fi ON f.sk_financiamiento_id = fi.sk_financiamiento_id
+  WHERE f.anio <= 2025
+  GROUP BY name
+  ORDER BY pim DESC LIMIT 10
+)
+SELECT 'sector' AS dimension, name, pim FROM sector_pim
+UNION ALL
+SELECT 'financing_source' AS dimension, name, pim FROM source_pim
+ORDER BY dimension, pim DESC
 """
 
 SYSTEM_PROMPT_TEMPLATE = """{schema}
@@ -207,7 +279,7 @@ You MUST respond with a single, valid JSON object following the exact schema bel
 CRITICAL INSTRUCTIONS:
 1. MULTILINGUAL EXECUTION: Detect the language used in the user's question. Write the "title", "executive_summary", "main_metric.label", "chart.title", "insights", and "followups" entirely in that exact same language (e.g., if the user writes in Spanish, respond entirely in Spanish; if in English, respond entirely in English).
 2. TOKEN SAVING & ZERO HALLUCINATION: You only receive the resulting rows returned internally by DuckDB. If DuckDB returns 0 rows (the results list is empty), you MUST set "executive_summary" to "No data found" (or "No se encontraron datos" if responding in Spanish), set "main_metric" to null, set "chart" to null, and you are strictly forbidden from hallucinating or fabricating any numbers, metrics, or financial data.
-3. INFORMATION DISCLOSURE: Never reveal any SQL queries, database/table names, or internal technical schema/alias names (such as f, g, i, p, e, fi, ano_eje, etc.) in the natural language text fields. Keep all text fields focused purely on clean, professional business and financial terms.
+3. INFORMATION DISCLOSURE: Never reveal any SQL queries, database/table names, or internal technical schema/alias names (such as f, g, i, p, e, fi, anio, etc.) in the natural language text fields. Keep all text fields focused purely on clean, professional business and financial terms.
 4. STRICT OUTPUT FORMAT: Return ONLY the raw JSON object. Do NOT wrap the JSON in markdown fences (e.g. do NOT use ```json ... ```). Do NOT use triple backticks. Do NOT explain the JSON. Do NOT include any introductory or concluding text.
 
 JSON SCHEMA:
@@ -295,6 +367,12 @@ class AIEngine:
         try:
             sql = self._translate_to_sql(question, lang, conversation_history)
             sql = QueryValidationPolicy.validate(sql)
+            contract = SQLSemanticContractValidator.validate(sql)
+            if not contract.is_valid:
+                raise ValueError(
+                    f"SQL semantic contract validation failed: "
+                    f"{'; '.join(contract.errors)}"
+                )
             results, row_count = self._execute(sql)
             summary = self._synthesize(question, sql, results, row_count, lang)
 

@@ -38,7 +38,26 @@ logger.info("Successfully configured component themes.")
 
 
 # ----------------------------------------------------
-# 0. CURRENCY FORMATTING HELPER
+# 0a. EXECUTION RATE COLOR HELPER
+# ----------------------------------------------------
+def get_execution_rate_color(execution_rate: float) -> str:
+    """
+    Maps an execution rate (0-100) to the corresponding UI_COLORS string
+    using a three-tier threshold system:
+
+        >= 75.0  -> success (green)
+        40.0-74.9 -> warning (amber)
+         < 40.0  -> danger  (red)
+    """
+    if execution_rate >= 75.0:
+        return UI_COLORS["success"]
+    if execution_rate >= 40.0:
+        return UI_COLORS["warning"]
+    return UI_COLORS["danger"]
+
+
+# ----------------------------------------------------
+# 0b. CURRENCY FORMATTING HELPER
 # ----------------------------------------------------
 def format_boardroom_currency(value: float, lang_dict: dict = None) -> str:
     """
@@ -104,19 +123,13 @@ def render_kpi_cards(metrics_dict: Dict[str, float], lang_dict: dict = None) -> 
     with cols[1]:
         st.metric(label=lang_dict.get("kpi_executed", "Total Executed Budget"), value=dev_str)
     with cols[2]:
-        if execution_rate < 50.0:
-            warning_text = lang_dict.get("execution_warning", "⚠️ Low Execution (< 50%)")
-            st.metric(
-                label=lang_dict.get("kpi_rate", "Budget Execution Rate"),
-                value=rate_str,
-                delta=warning_text,
-                delta_color="inverse"
-            )
-        else:
-            st.metric(
-                label=lang_dict.get("kpi_rate", "Budget Execution Rate"),
-                value=rate_str
-            )
+        target_dev = execution_rate - 75.0
+        st.metric(
+            label=lang_dict.get("kpi_rate", "Budget Execution Rate"),
+            value=rate_str,
+            delta=f"{target_dev:+.1f}pp",
+            delta_color="normal"
+        )
     with cols[3]:
         st.metric(label=lang_dict.get("kpi_gap", "Unexecuted Budget Gap"), value=gap_str)
 
@@ -367,7 +380,200 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
 
 
 # ----------------------------------------------------
-# 5. AI RESPONSE ADAPTER & HELPER FUNCTIONS
+# 5. ECONOMIC COMPOSITION CHART
+# Stacked horizontal bar: economic category × PIM vs Devengado.
+# ----------------------------------------------------
+def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> None:
+    """
+    Renders a grouped horizontal bar chart showing PIM and Devengado
+    by economic classification category (generica_nombre).
+    Uses the same visual style as the execution variance chart.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns ['economic_category', 'pim', 'devengado'].
+        lang_dict (dict): Dictionary with active language keys.
+    """
+    if lang_dict is None:
+        lang_dict = {}
+    if df.empty:
+        st.warning("No economic composition data found matching the active filters.")
+        return
+
+    df_clean = df.copy()
+    df_clean["economic_category"] = df_clean["economic_category"].fillna("Unspecified").astype(str)
+    df_clean = df_clean.sort_values(by="pim", ascending=True)
+    df_clean = df_clean.tail(10)
+
+    fig = go.Figure()
+    plotly_fmt = lang_dict.get("plotly_fmt", ",.0f")
+
+    fig.add_trace(
+        go.Bar(
+            name=lang_dict.get("legend_pim", "Planned Budget (PIM)"),
+            y=df_clean["economic_category"],
+            x=df_clean["pim"],
+            orientation="h",
+            marker=dict(color="#94A3B8"),
+            hovertemplate=f"Category: %{{y}}<br>PIM: S/. %{{x:{plotly_fmt}}}<extra></extra>"
+        )
+    )
+    fig.add_trace(
+        go.Bar(
+            name=lang_dict.get("legend_dev", "Executed Budget (Dev)"),
+            y=df_clean["economic_category"],
+            x=df_clean["devengado"],
+            orientation="h",
+            marker=dict(color=UI_COLORS.get("primary", "#8B0000")),
+            hovertemplate=f"Category: %{{y}}<br>Devengado: S/. %{{x:{plotly_fmt}}}<extra></extra>"
+        )
+    )
+
+    fig.update_layout(
+        barmode="group",
+        xaxis=dict(showgrid=False, visible=False),
+        yaxis=dict(
+            showgrid=False,
+            showline=False,
+            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1,
+            font=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=40, b=10),
+        height=400,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+# ----------------------------------------------------
+# 6. FINANCING STRUCTURE CHART
+# Horizontal bar: PIM by financing source (fuente_financiamiento_nombre).
+# ----------------------------------------------------
+def render_financing_structure(df: pd.DataFrame, lang_dict: dict = None) -> None:
+    """
+    Renders a horizontal bar chart showing PIM by financing source.
+    Highlights the top bar with the primary accent color.
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns ['financing_source', 'pim', 'devengado'].
+        lang_dict (dict): Dictionary with active language keys.
+    """
+    if lang_dict is None:
+        lang_dict = {}
+    if df.empty:
+        st.warning("No financing structure data found matching the active filters.")
+        return
+
+    df_clean = df.copy()
+    df_clean["financing_source"] = df_clean["financing_source"].fillna("Unspecified").astype(str)
+    df_clean = df_clean.sort_values(by="pim", ascending=True)
+
+    n_bars = len(df_clean)
+    bar_colors = ["#CBD5E1"] * n_bars
+    if n_bars > 0:
+        bar_colors[-1] = UI_COLORS.get("primary", "#8B0000")
+
+    text_labels = df_clean["pim"].apply(lambda v: f" {format_boardroom_currency(v, lang_dict)}")
+
+    fig = go.Figure(
+        go.Bar(
+            x=df_clean["pim"],
+            y=df_clean["financing_source"],
+            orientation="h",
+            marker=dict(color=bar_colors),
+            text=text_labels,
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate="Source: %{y}<br>PIM: S/. %{x:,.0f}<extra></extra>"
+        )
+    )
+
+    fig.update_layout(
+        xaxis=dict(showgrid=False, visible=False),
+        yaxis=dict(
+            showgrid=False,
+            showline=False,
+            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=10, t=10, b=10),
+        height=350,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+# ----------------------------------------------------
+# 7. PROGRAMMATIC ALLOCATION CHART
+# Horizontal bar top-10: PIM by selected programmatic dimension.
+# ----------------------------------------------------
+def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> None:
+    """
+    Renders a horizontal bar chart showing top-N PIM by programmatic
+    dimension (budget program, project, or government function).
+
+    Args:
+        df (pd.DataFrame): DataFrame with columns ['dimension', 'total_monto'].
+        lang_dict (dict): Dictionary with active language keys.
+    """
+    if lang_dict is None:
+        lang_dict = {}
+    if df.empty:
+        st.warning("No programmatic allocation data found matching the active filters.")
+        return
+
+    df_clean = df.copy()
+    df_clean["dimension"] = df_clean["dimension"].fillna("Unspecified").astype(str)
+    df_clean = df_clean.sort_values(by="total_monto", ascending=True)
+
+    n_bars = len(df_clean)
+    if n_bars == 0:
+        return
+
+    bar_colors = ["#CBD5E1"] * n_bars
+    if n_bars > 0:
+        bar_colors[-1] = UI_COLORS.get("primary", "#8B0000")
+
+    text_labels = df_clean["total_monto"].apply(lambda v: f" {format_boardroom_currency(v, lang_dict)}")
+
+    fig = go.Figure(
+        go.Bar(
+            x=df_clean["total_monto"],
+            y=df_clean["dimension"],
+            orientation="h",
+            marker=dict(color=bar_colors),
+            text=text_labels,
+            textposition="outside",
+            cliponaxis=False,
+            hovertemplate=f"{lang_dict.get('chart_dimension', 'Dimension')}: %{{y}}<br>{lang_dict.get('chart_budget', 'Budget')}: %{{x:,.0f}}<extra></extra>"
+        )
+    )
+
+    margin_r = lang_dict.get("conc_margin_r", 110)
+    fig.update_layout(
+        xaxis=dict(showgrid=False, visible=False),
+        yaxis=dict(
+            showgrid=False,
+            showline=False,
+            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+        ),
+        plot_bgcolor="rgba(0,0,0,0)",
+        paper_bgcolor="rgba(0,0,0,0)",
+        margin=dict(l=10, r=margin_r, t=10, b=10),
+        height=350,
+    )
+    st.plotly_chart(fig, width="stretch")
+
+
+# ----------------------------------------------------
+# 8. AI RESPONSE ADAPTER & HELPER FUNCTIONS
 # ----------------------------------------------------
 def _prepare_ranking_df(df: pd.DataFrame) -> pd.DataFrame:
     """
