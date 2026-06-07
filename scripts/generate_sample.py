@@ -50,7 +50,7 @@ def export_ai_dev_sample(limit: int = 500):
     query = f"""
         COPY (
             SELECT 
-                f.ano_eje,
+                f.anio,
                 f.fase,
                 f.monto,
                 g.* EXCLUDE (sk_geografia_id),
