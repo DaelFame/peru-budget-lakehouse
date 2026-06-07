@@ -1,13 +1,24 @@
 .venv/
 __pycache__/
 .env
-data/
+
+# Ignore all data
+data/*
+
+# Ignore all parquet files globally
+*.parquet
+
+# Allow demo assets only
+!data/00_demo/
+!data/00_demo/*.parquet
+
+# Other ignored assets
 *.csv
 *.xlsx
-*.parquet
 *.zip
 *.rar
-.env
+
 .aider*
 Bitacora_avance.txt
 schema_audit.md
+.tmp
