@@ -354,25 +354,53 @@ class GrainRouter:
 
     @classmethod
     def _tokenize(cls, text: str) -> list[str]:
-        """Split question into tokens for keyword matching.
+        """
+        Split question into tokens for keyword matching.
 
         Generates unigram, bigram, and trigram candidates.
-        Normalizes plurals by stripping trailing 's' from each word
-        so 'programs' matches 'program', 'sectors' matches 'sector', etc.
+
+        Handles:
+        - programs -> program
+        - sectors -> sector
+        - departments -> department
+        - sectores -> sector
+        - instituciones -> institucion
+        - activities -> activity
         """
+
         raw_words = text.split()
-        # Normalize: strip trailing 's' for plural handling (e.g. programs -> program)
-        words = [
-            w[:-1] if len(w) > 3 and w.endswith('s') and not w.endswith('ss') else w
-            for w in raw_words
-        ]
+
+        words: list[str] = []
+
+        for w in raw_words:
+            words.append(w)
+
+            if len(w) > 3 and w.endswith("s") and not w.endswith("ss"):
+
+                # English plural: activities -> activity
+                if w.endswith("ies") and len(w) > 4:
+                    words.append(w[:-3] + "y")
+
+                # Spanish plural: sectores -> sector
+                # instituciones -> institucion
+                if w.endswith("es") and len(w) > 4:
+                    words.append(w[:-2])
+
+                # Generic plural: programs -> program
+                # departments -> department
+                words.append(w[:-1])
+
         tokens: list[str] = []
 
         for i in range(len(words)):
             tokens.append(words[i])
+
             if i + 1 < len(words):
-                tokens.append(f"{words[i]} {words[i+1]}")
+                tokens.append(f"{words[i]} {words[i + 1]}")
+
             if i + 2 < len(words):
-                tokens.append(f"{words[i]} {words[i+1]} {words[i+2]}")
+                tokens.append(
+                    f"{words[i]} {words[i + 1]} {words[i + 2]}"
+                )
 
         return tokens
