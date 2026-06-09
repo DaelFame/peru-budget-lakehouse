@@ -11,10 +11,8 @@ Covers:
   - Edge cases (empty, year-only)
 """
 
-import pytest
 from dashboard.grain_router import (
     GrainRouter,
-    GrainPlan,
     GRAIN_YEAR,
     GRAIN_GEOGRAPHY,
     GRAIN_FINANCING,

@@ -156,7 +156,7 @@ def render_top_concentrations(df: pd.DataFrame, lang_dict: dict = None) -> None:
     # Work on a copy and clean labels
     df_clean = df.copy()
     df_clean["dimension"] = df_clean["dimension"].fillna("Unspecified").astype(str)
-    
+
     # Sort ascending for correct bottom-to-top rendering in Plotly
     df_clean = df_clean.sort_values(by="total_monto", ascending=True)
 

@@ -11,7 +11,7 @@ sys.path.append(
 )
 
 # Load 04_analytical_reports dynamically due to numeric prefix
-analytical_reports = importlib.import_module("04_analytical_reports")
+analytical_reports = importlib.import_module("etl_06_analytical_reports")
 
 
 def test_initialize_analytical_engine():

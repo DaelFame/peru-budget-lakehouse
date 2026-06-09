@@ -8,7 +8,7 @@ import polars as pl
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "src")))
 
 # Load the numerically-prefixed module dynamically using importlib
-qa_audit = importlib.import_module("03_data_quality_audit")
+qa_audit = importlib.import_module("etl_05_data_quality_audit")
 
 def test_audit_financial_amounts_match():
     """
@@ -40,6 +40,6 @@ def test_audit_financial_amounts_mismatch():
     # Must raise a ValueError
     with pytest.raises(ValueError) as exc_info:
         qa_audit.audit_financial_amounts(lazy_silver, lazy_gold_fact)
-    
+
     assert "Data quality audit failed" in str(exc_info.value)
     assert "Financial mismatch detected" in str(exc_info.value)

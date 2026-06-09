@@ -7,48 +7,48 @@ MOCK_LANG_DICT = {"insights_title": "Key Insights"}
 
 @pytest.mark.parametrize("malformed_payload", [
     # 1. Completamente vacío
-    {}, 
-    
+    {},
+
     # 2. Solo tiene intent, le falta todo lo demás
-    {"intent": "ranking"}, 
-    
+    {"intent": "ranking"},
+
     # 3. Intent desconocido/no soportado
     {
         "intent": "unknown_intent_xyz",
         "title": "Some Title",
         "executive_summary": "Summary"
-    }, 
-    
+    },
+
     # 4. Datos del gráfico vacíos
     {
         "intent": "ranking",
         "chart": {"type": "horizontal_bar", "data": []}
-    }, 
-    
+    },
+
     # 5. Esquema de datos del gráfico totalmente roto
     {
         "intent": "comparison",
         "chart": {"type": "grouped_bar", "data": [{"bad_key": 1, "other_bad_key": "A"}]}
-    }, 
-    
+    },
+
     # 6. Métrica principal nula (debe saltarla, no fallar)
     {
         "intent": "ranking",
-        "main_metric": None 
+        "main_metric": None
     },
-    
+
     # 7. Insights y followups nulos o malformados
     {
         "intent": "trend",
         "insights": None,
         "followups": "Esto deberia ser una lista, no un string"
     },
-    
+
     # 8. Gráfico nulo explícito
     {
         "intent": "geographic",
         "chart": None
-    } 
+    }
 ])
 @patch("src.dashboard.components.st")
 def test_render_ai_response_resilience(mock_st, malformed_payload):

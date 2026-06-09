@@ -22,7 +22,7 @@ def test_get_optimal_memory_limit_happy_path(monkeypatch):
         raise ValueError(f"Unknown sysconf parameter: {name}")
 
     monkeypatch.setattr(os, "sysconf", mock_sysconf)
-    
+
     limit = get_optimal_memory_limit()
     assert limit == "12GB"
 
