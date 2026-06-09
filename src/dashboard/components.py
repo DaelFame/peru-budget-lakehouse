@@ -18,21 +18,48 @@ logger = logging.getLogger(__name__)
 
 # Try importing standard theme or fallback gracefully
 try:
-    from theme import UI_COLORS
+    from theme import LIGHT_COLORS, DARK_COLORS
 except ImportError:
     try:
-        from src.dashboard.theme import UI_COLORS
+        from src.dashboard.theme import LIGHT_COLORS, DARK_COLORS
     except ImportError:
-        # Fallback to premium slate and deep wine red executive palette
-        UI_COLORS = {
-            "primary": "#8B0000",        # Deep crimson/wine representing Peru
-            "secondary": "#1E293B",      # Slate blue for hierarchy headers
-            "background_card": "#F8FAFC", # Light gray/blue
+        LIGHT_COLORS = {
+            "primary": "#8B0000",
+            "secondary": "#1E293B",
+            "background_card": "#F8FAFC",
             "border": "#E2E8F0",
             "success": "#10B981",
             "warning": "#F59E0B",
             "danger": "#EF4444",
+            "bar_neutral": "#CBD5E1",
+            "bar_muted": "#94A3B8",
+            "subtitle": "#64748b",
+            "card_label": "#1E293B",
+            "card_value": "#1E293B",
         }
+        DARK_COLORS = {
+            "primary": "#CD5C5C",
+            "secondary": "#E2E8F0",
+            "background_card": "#1E293B",
+            "border": "#334155",
+            "success": "#34D399",
+            "warning": "#FBBF24",
+            "danger": "#F87171",
+            "bar_neutral": "#475569",
+            "bar_muted": "#64748B",
+            "subtitle": "#94A3B8",
+            "card_label": "#E2E8F0",
+            "card_value": "#F1F5F9",
+        }
+
+
+def _get_colors():
+    """Returns the active color palette from Streamlit session state."""
+    try:
+        import streamlit as st
+        return st.session_state.get("ui_colors", LIGHT_COLORS)
+    except Exception:
+        return LIGHT_COLORS
 
 logger.info("Successfully configured component themes.")
 
@@ -42,7 +69,7 @@ logger.info("Successfully configured component themes.")
 # ----------------------------------------------------
 def get_execution_rate_color(execution_rate: float) -> str:
     """
-    Maps an execution rate (0-100) to the corresponding UI_COLORS string
+    Maps an execution rate (0-100) to the corresponding _get_colors() string
     using a three-tier threshold system:
 
         >= 75.0  -> success (green)
@@ -50,10 +77,10 @@ def get_execution_rate_color(execution_rate: float) -> str:
          < 40.0  -> danger  (red)
     """
     if execution_rate >= 75.0:
-        return UI_COLORS["success"]
+        return _get_colors()["success"]
     if execution_rate >= 40.0:
-        return UI_COLORS["warning"]
-    return UI_COLORS["danger"]
+        return _get_colors()["warning"]
+    return _get_colors()["danger"]
 
 
 # ----------------------------------------------------
@@ -166,7 +193,7 @@ def render_top_concentrations(df: pd.DataFrame, lang_dict: dict = None) -> None:
 
     # Apply a monochrome strategy where only the top 1 bar gets the primary accent
     bar_colors = ["#CBD5E1"] * n_bars  # Soft neutral gray for non-top bars
-    bar_colors[-1] = UI_COLORS.get("primary", "#8B0000")  # Top bar highlighted
+    bar_colors[-1] = _get_colors().get("primary", "#8B0000")  # Top bar highlighted
 
     # Bind the custom currency helper to the text field
     text_labels = df_clean["total_monto"].apply(lambda v: f" {format_boardroom_currency(v, lang_dict)}")
@@ -198,7 +225,7 @@ def render_top_concentrations(df: pd.DataFrame, lang_dict: dict = None) -> None:
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -261,7 +288,7 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
             y=df_clean["dimension"],
             x=df_clean["devengado"],
             orientation="h",
-            marker=dict(color=UI_COLORS.get("primary", "#8B0000")),
+            marker=dict(color=_get_colors().get("primary", "#8B0000")),
             hovertemplate=f"{lang_dict.get('chart_executed_val', 'Executed (Devengado)')}: S/. %{{x:{plotly_fmt}}}<extra></extra>"
         )
     )
@@ -275,7 +302,7 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         legend=dict(
             orientation="h",
@@ -283,7 +310,7 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
             y=1.02,
             xanchor="right",
             x=1,
-            font=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            font=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -331,7 +358,7 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
     # Elegant single restrained gradient from clean background gray to executive primary
     colorscale = [
         [0.0, "#F8FAFC"],
-        [1.0, UI_COLORS.get("primary", "#8B0000")]
+        [1.0, _get_colors().get("primary", "#8B0000")]
     ]
 
     # FIX: Configured colorbar using modern nested dictionary structure to resolve Plotly crash
@@ -342,7 +369,7 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
         ),
         thickness=12,
         len=0.5,
-        tickfont=dict(size=10, color=UI_COLORS.get("secondary", "#1E293B")),
+        tickfont=dict(size=10, color=_get_colors().get("secondary", "#1E293B")),
     )
 
     fig = go.Figure(
@@ -362,12 +389,12 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
             showgrid=False,
             showline=False,
             side="top",
-            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -423,7 +450,7 @@ def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> Non
             y=df_clean["economic_category"],
             x=df_clean["devengado"],
             orientation="h",
-            marker=dict(color=UI_COLORS.get("primary", "#8B0000")),
+            marker=dict(color=_get_colors().get("primary", "#8B0000")),
             hovertemplate=f"Category: %{{y}}<br>Devengado: S/. %{{x:{plotly_fmt}}}<extra></extra>"
         )
     )
@@ -434,7 +461,7 @@ def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> Non
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         legend=dict(
             orientation="h",
@@ -442,7 +469,7 @@ def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> Non
             y=1.02,
             xanchor="right",
             x=1,
-            font=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            font=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -478,7 +505,7 @@ def render_financing_structure(df: pd.DataFrame, lang_dict: dict = None) -> None
     n_bars = len(df_clean)
     bar_colors = ["#CBD5E1"] * n_bars
     if n_bars > 0:
-        bar_colors[-1] = UI_COLORS.get("primary", "#8B0000")
+        bar_colors[-1] = _get_colors().get("primary", "#8B0000")
 
     text_labels = df_clean["pim"].apply(lambda v: f" {format_boardroom_currency(v, lang_dict)}")
 
@@ -500,7 +527,7 @@ def render_financing_structure(df: pd.DataFrame, lang_dict: dict = None) -> None
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -539,7 +566,7 @@ def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> 
 
     bar_colors = ["#CBD5E1"] * n_bars
     if n_bars > 0:
-        bar_colors[-1] = UI_COLORS.get("primary", "#8B0000")
+        bar_colors[-1] = _get_colors().get("primary", "#8B0000")
 
     text_labels = df_clean["total_monto"].apply(lambda v: f" {format_boardroom_currency(v, lang_dict)}")
 
@@ -562,7 +589,7 @@ def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> 
         yaxis=dict(
             showgrid=False,
             showline=False,
-            tickfont=dict(size=12, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",
@@ -732,7 +759,7 @@ def _render_trend_line_chart(df: pd.DataFrame, lang_dict: dict = None) -> None:
         y_cols = [cols[1]] if len(cols) > 1 else [cols[0]]
 
     fig = go.Figure()
-    colors = [UI_COLORS.get("primary", "#8B0000"), "#475569", "#0F172A"]
+    colors = [_get_colors().get("primary", "#8B0000"), "#475569", "#0F172A"]
 
     for idx, y_col in enumerate(y_cols[:3]):
         fig.add_trace(
@@ -750,12 +777,12 @@ def _render_trend_line_chart(df: pd.DataFrame, lang_dict: dict = None) -> None:
     fig.update_layout(
         xaxis=dict(
             showgrid=False,
-            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         yaxis=dict(
             showgrid=True,
             gridcolor="#F1F5F9",
-            tickfont=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            tickfont=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         legend=dict(
             orientation="h",
@@ -763,7 +790,7 @@ def _render_trend_line_chart(df: pd.DataFrame, lang_dict: dict = None) -> None:
             y=1.02,
             xanchor="right",
             x=1,
-            font=dict(size=11, color=UI_COLORS.get("secondary", "#1E293B")),
+            font=dict(size=11, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
         paper_bgcolor="rgba(0,0,0,0)",

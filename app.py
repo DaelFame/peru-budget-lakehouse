@@ -40,7 +40,7 @@ from dashboard.components import (
     render_programmatic_allocation,
     render_ai_response,
 )
-from dashboard.theme import UI_COLORS, FONT_FAMILY
+from dashboard.theme import LIGHT_COLORS, DARK_COLORS, FONT_FAMILY
 
 # ----------------------------------------------------
 # AI RESPONSE DEFENSIVE INTEGRATION HELPERS
@@ -101,7 +101,7 @@ def render_assistant_message(content, lang_dict):
     or falling back to basic text rendering.
     """
     parsed = safe_parse_payload(content)
-    
+
     if parsed is not None:
         try:
             render_ai_response(parsed, lang_dict)
@@ -134,65 +134,70 @@ st.set_page_config(
 )
 
 # ----------------------------------------------------
-# HIGH-END FINANCIAL TERMINAL TYPOGRAPHY & CARD STYLING
+# THEME-AWARE CSS INJECTION
 # ----------------------------------------------------
-st.markdown(f"""
-    <style>
-    @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
-    
-    html, body, [class*="css"] {{
-        font-family: {FONT_FAMILY};
-    }}
-    
-    .main-title {{
-        font-size: 2.8rem;
-        font-weight: 700;
-        color: {UI_COLORS['secondary']};
-        margin-bottom: 0.2rem;
-        letter-spacing: -0.02em;
-    }}
-    
-    .subtitle {{
-        font-size: 1.2rem;
-        font-weight: 400;
-        color: #64748b;
-        margin-bottom: 1.5rem;
-    }}
-    
-    /* Premium boardroom border-free metric cards */
-    [data-testid="metric-container"] {{
-        background-color: {UI_COLORS['background_card']};
-        border: 1px solid {UI_COLORS['border']};
-        padding: 1.2rem;
-        border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.015);
-    }}
-    
-    [data-testid="metric-container"] label {{
-        font-weight: 600 !important;
-        color: #1E293B !important;
-        font-size: 1.0rem !important;
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-    }}
-    
-    [data-testid="metric-container"] div[data-testid="stMetricValue"] {{
-        font-size: 2.4rem !important;
-        font-weight: 700;
-        color: #1E293B;
-    }}
+def _inject_theme_css(colors: dict) -> None:
+    """Injects theme-aware CSS using the provided color palette."""
+    st.markdown(f"""
+        <style>
+        @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
 
-    
-    /* Clean sections titles styling */
-    .section-title {{
-        font-size: 1.6rem;
-        font-weight: 600;
-        color: {UI_COLORS['secondary']};
-        margin-top: 1rem;
-        margin-bottom: 1rem;
-    }}
-    </style>
-""", unsafe_allow_html=True)
+        html, body, [class*="css"] {{
+            font-family: {FONT_FAMILY};
+        }}
+
+        .main-title {{
+            font-size: 2.8rem;
+            font-weight: 700;
+            color: {colors['secondary']};
+            margin-bottom: 0.2rem;
+            letter-spacing: -0.02em;
+        }}
+
+        .subtitle {{
+            font-size: 1.2rem;
+            font-weight: 400;
+            color: {colors['subtitle']};
+            margin-bottom: 1.5rem;
+        }}
+
+        [data-testid="metric-container"] {{
+            background-color: {colors['background_card']};
+            border: 1px solid {colors['border']};
+            padding: 1.2rem;
+            border-radius: 12px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.015);
+        }}
+
+        [data-testid="metric-container"] label {{
+            font-weight: 600 !important;
+            color: {colors['card_label']} !important;
+            font-size: 1.0rem !important;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }}
+
+        [data-testid="metric-container"] div[data-testid="stMetricValue"] {{
+            font-size: 2.4rem !important;
+            font-weight: 700;
+            color: {colors['card_value']};
+        }}
+
+        .section-title {{
+            font-size: 1.6rem;
+            font-weight: 600;
+            color: {colors['secondary']};
+            margin-top: 1rem;
+            margin-bottom: 1rem;
+        }}
+
+        .section-desc {{
+            font-size: 0.9rem;
+            color: {colors['subtitle']};
+            margin-bottom: 1rem;
+        }}
+        </style>
+    """, unsafe_allow_html=True)
 
 
 # ----------------------------------------------------
@@ -278,6 +283,13 @@ def main():
     if "pending_prompt" not in st.session_state:
         st.session_state.pending_prompt = None
 
+    # ---- THEME INIT ----
+    if "dark_mode" not in st.session_state:
+        st.session_state.dark_mode = False
+    colors = DARK_COLORS if st.session_state.dark_mode else LIGHT_COLORS
+    st.session_state["ui_colors"] = colors
+    _inject_theme_css(colors)
+
     # Load and initialize control panel filters from the DuckDB gold layers
     try:
         filters = cached_load_filters()
@@ -301,29 +313,29 @@ def main():
             "sector": "Executive Sector",
             "dept": "Executing Department",
             "footer": "Peru Budget Lakehouse • Executive Dashboard v2.0",
-            
+
             "main_title": "🇵🇪 National Budget Execution Intelligence",
             "subtitle": "Boardroom-Grade Financial Dashboard & Public Expenditure Accountability",
             "empty_state": "⚠️ No records found matching the active criteria. Please adjust your Control Panel filters in the sidebar.",
-            
+
             "sec_kpis": "Core Performance Indicators",
             "kpi_pim": "Total Planned Budget (PIM)",
             "kpi_executed": "Total Executed Budget",
             "kpi_rate": "Budget Execution Rate",
             "kpi_gap": "Unexecuted Budget Gap",
             "execution_warning": "⚠️ Low Execution (< 50%)",
-            
+
             "sec_concentrations": "Top Budget Concentrations",
             "sub_concentrations": "Identifies the highest budget concentrations. Choose Sector or Department below to group.",
             "toggle_conc": "Group Concentrations By",
             "toggle_options": ["Sector", "Department"],
             "no_conc_data": "No concentration data found matching the active filters.",
-            
+
             "sec_variance": "Budget Execution Variance",
             "sub_variance": "Compares Planned (PIM) vs Executed (Devengado) values. Choose a dimension below.",
             "toggle_var": "Group Variance By",
             "no_var_data": "No comparative variance data found matching the active filters.",
-            
+
             "sec_heatmap": "Geographic Accountability Matrix",
             "sub_heatmap": "Heatmap distribution illustrating execution rates (%) grouped by Executing Department across all available Fiscal Years. Muted shades indicate lower output levels, and deeper Crimson represents solid progress.",
             "no_heatmap_data": "No geographic heatmap data found matching the active filters.",
@@ -341,7 +353,7 @@ def main():
             "toggle_prog": "Group Programmatic By",
             "prog_toggle_options": ["Budget Program", "Project", "Government Function"],
             "no_prog_data": "No programmatic allocation data found matching the active filters.",
-            
+
             # Financial/Formatting mappings
             "billions_symbol": "B",
             "millions_symbol": "M",
@@ -350,7 +362,7 @@ def main():
             "legend_pim": "Planned Budget (PIM)",
             "legend_dev": "Executed Budget (Dev)",
             "conc_margin_r": 110,
-            
+
             # Spinners
             "spinner_metrics": "Extracting financial metrics...",
             "spinner_conc": "Aggregating concentration data...",
@@ -359,7 +371,7 @@ def main():
             "spinner_econ": "Aggregating economic composition...",
             "spinner_fin": "Aggregating financing structure...",
             "spinner_prog": "Aggregating programmatic allocation...",
-            
+
             # Chart titles & tooltips
             "chart_budget": "Budget",
             "chart_dimension": "Dimension",
@@ -387,29 +399,29 @@ def main():
             "sector": "Sector Ejecutivo",
             "dept": "Departamento Ejecutor",
             "footer": "Peru Budget Lakehouse • Dashboard Ejecutivo v2.0",
-            
+
             "main_title": "🇵🇪 Inteligencia de Ejecución del Presupuesto Nacional",
             "subtitle": "Dashboard Financiero de Nivel Directivo y Rendición de Cuentas del Gasto Público",
             "empty_state": "⚠️ No se encontraron registros que coincidan con los criterios activos. Por favor, ajuste los filtros del Panel de Control en la barra lateral.",
-            
+
             "sec_kpis": "Indicadores Clave de Desempeño",
             "kpi_pim": "Presupuesto Programado Total (PIM)",
             "kpi_executed": "Presupuesto Ejecutado Total",
             "kpi_rate": "Tasa de Ejecución Presupuestal",
             "kpi_gap": "Brecha de Presupuesto No Ejecutado",
             "execution_warning": "⚠️ Baja Ejecución (< 50%)",
-            
+
             "sec_concentrations": "Principales Concentraciones Presupuestales",
             "sub_concentrations": "Identifica las mayores concentraciones presupuestarias. Seleccione Sector o Departamento a continuación para agrupar.",
             "toggle_conc": "Agrupar Concentraciones Por",
             "toggle_options": ["Sector", "Departamento"],
             "no_conc_data": "No se encontraron datos de concentración que coincidan con los filtros activos.",
-            
+
             "sec_variance": "Variación de la Ejecución Presupuestal",
             "sub_variance": "Compara los valores Programados (PIM) vs Ejecutados (Devengado). Seleccione una dimensión a continuación.",
             "toggle_var": "Agrupar Variación Por",
             "no_var_data": "No se encontraron datos de variación comparativa que coincidan con los filtros activos.",
-            
+
             "sec_heatmap": "Matriz de Responsabilidad Geográfica",
             "sub_heatmap": "Distribución del mapa de calor que ilustra las tasas de ejecución (%) agrupadas por Departamento Ejecutor a lo largo de todos los Años Fiscales disponibles. Los tonos tenues indican niveles de producción más bajos, y el carmesí más profundo representa un progreso sólido.",
             "no_heatmap_data": "No se encontraron datos del mapa de calor geográfico que coincidan con los filtros activos.",
@@ -427,7 +439,7 @@ def main():
             "toggle_prog": "Agrupar Programático Por",
             "prog_toggle_options": ["Programa Presupuestal", "Proyecto", "Función de Gobierno"],
             "no_prog_data": "No se encontraron datos de asignación programática que coincidan con los filtros activos.",
-            
+
             # Financial/Formatting mappings
             "billions_symbol": "Mil MM",
             "millions_symbol": "Millones",
@@ -436,7 +448,7 @@ def main():
             "legend_pim": "Presupuesto Programado (PIM)",
             "legend_dev": "Presupuesto Ejecutado (Dev)",
             "conc_margin_r": 160,
-            
+
             # Spinners
             "spinner_metrics": "Extrayendo métricas financieras...",
             "spinner_conc": "Agrupando datos de concentración...",
@@ -445,7 +457,7 @@ def main():
             "spinner_econ": "Agrupando composición económica...",
             "spinner_fin": "Agrupando estructura de financiamiento...",
             "spinner_prog": "Agrupando asignación programática...",
-            
+
             # Chart titles & tooltips
             "chart_budget": "Presupuesto",
             "chart_dimension": "Dimensión",
@@ -504,6 +516,13 @@ def main():
         key="dept_filter"
     )
 
+    # Dark mode toggle
+    st.sidebar.markdown("---")
+    dark_mode = st.sidebar.checkbox("🌓 Dark Mode", value=st.session_state.dark_mode)
+    if dark_mode != st.session_state.dark_mode:
+        st.session_state.dark_mode = dark_mode
+        st.rerun()
+
     # Footer attribution
     st.sidebar.markdown("---")
     st.sidebar.markdown(
@@ -548,7 +567,7 @@ def main():
     # ----------------------------------------------------
     st.markdown(f'<div class="section-title">{LANG["sec_economic"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+        f"<div class='section-desc'>"
         f"{LANG['sub_economic']}"
         f"</div>",
         unsafe_allow_html=True
@@ -577,12 +596,12 @@ def main():
     with chart_col1:
         st.markdown(f'<div class="section-title">{LANG["sec_concentrations"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"<div class='section-desc'>"
             f"{LANG['sub_concentrations']}"
             f"</div>",
             unsafe_allow_html=True
         )
-        
+
         # Interactive Dimension Toggle
         conc_toggle = st.selectbox(
             LANG["toggle_conc"],
@@ -592,7 +611,7 @@ def main():
             label_visibility="collapsed"
         )
         group_column = "sector_nombre" if conc_toggle == LANG["toggle_options"][0] else "departamento_ejecutora_nombre"
-        
+
         with st.spinner(LANG["spinner_conc"]):
             df_conc = cached_top_concentrations(
                 group_by=group_column,
@@ -610,7 +629,7 @@ def main():
     with chart_col2:
         st.markdown(f'<div class="section-title">{LANG["sec_variance"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"<div class='section-desc'>"
             f"{LANG['sub_variance']}"
             f"</div>",
             unsafe_allow_html=True
@@ -650,7 +669,7 @@ def main():
     with fin_col1:
         st.markdown(f'<div class="section-title">{LANG["sec_financing"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"<div class='section-desc'>"
             f"{LANG['sub_financing']}"
             f"</div>",
             unsafe_allow_html=True
@@ -672,7 +691,7 @@ def main():
     with fin_col2:
         st.markdown(f'<div class="section-title">{LANG["sec_programmatic"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+            f"<div class='section-desc'>"
             f"{LANG['sub_programmatic']}"
             f"</div>",
             unsafe_allow_html=True
@@ -712,7 +731,7 @@ def main():
     # ----------------------------------------------------
     st.markdown(f'<div class="section-title">{LANG["sec_heatmap"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+        f"<div class='section-desc'>"
         f"{LANG['sub_heatmap']}"
         f"</div>",
         unsafe_allow_html=True
@@ -737,7 +756,7 @@ def main():
     st.markdown("---")
     st.markdown(f'<div class="section-title">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div style='font-size:0.9rem; color:#64748b; margin-bottom:1rem;'>"
+        f"<div class='section-desc'>"
         f"{LANG['sub_ai_chat']}"
         f"</div>",
         unsafe_allow_html=True
@@ -778,7 +797,7 @@ def main():
             with st.chat_message("assistant"):
                 with st.spinner(LANG["chat_spinner"]):
                     chat_lang = "es" if LANG["lang_name"] == "Español" else "en"
-                    
+
                     # Convert any dictionary content to string for the LLM history to avoid API crash
                     sanitized_history = []
                     for msg in st.session_state.chat_history[:-1]:

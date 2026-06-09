@@ -1,18 +1,38 @@
 """
 Dashboard UI Theme Configuration
-Centralizes color palettes and visual styles for the Streamlit executive interface.
+Provides dual light/dark color palettes for the Streamlit executive interface.
 """
 
-# Premium executive style palette (Minimalist & High-End)
-UI_COLORS = {
-    "primary": "#8B0000",        # Crimson/Wine accent representing Peru
-    "secondary": "#1E293B",      # Deep Slate Blue for text hierarchy and headers
-    "background_card": "#F8FAFC", # Ultra-clean light gray/blue for metric cards
-    "border": "#E2E8F0",          # Soft dividers
-    "success": "#10B981",         # Emerald green for healthy budget execution (>75%)
-    "warning": "#F59E0B",         # Amber for warning/moderate execution (40% - 75%)
-    "danger": "#EF4444",          # Light red for stagnant budget execution (<40%)
+LIGHT_COLORS = {
+    "primary": "#8B0000",
+    "secondary": "#1E293B",
+    "background_card": "#F8FAFC",
+    "border": "#E2E8F0",
+    "success": "#10B981",
+    "warning": "#F59E0B",
+    "danger": "#EF4444",
+    "bar_neutral": "#CBD5E1",
+    "bar_muted": "#94A3B8",
+    "subtitle": "#64748b",
+    "card_label": "#1E293B",
+    "card_value": "#1E293B",
 }
 
-# Typography adjustments if needed by components
+DARK_COLORS = {
+    "primary": "#CD5C5C",
+    "secondary": "#E2E8F0",
+    "background_card": "#1E293B",
+    "border": "#334155",
+    "success": "#34D399",
+    "warning": "#FBBF24",
+    "danger": "#F87171",
+    "bar_neutral": "#475569",
+    "bar_muted": "#64748B",
+    "subtitle": "#94A3B8",
+    "card_label": "#E2E8F0",
+    "card_value": "#F1F5F9",
+}
+
+UI_COLORS = LIGHT_COLORS
+
 FONT_FAMILY = "'Outfit', sans-serif"
