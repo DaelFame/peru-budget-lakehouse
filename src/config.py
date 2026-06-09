@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # ==========================================
-# DYNAMIC HARDWARE DETECTOR (SENIOR LEVEL)
+# DYNAMIC HARDWARE DETECTOR
 # ==========================================
 def get_optimal_memory_limit() -> str:
     try:

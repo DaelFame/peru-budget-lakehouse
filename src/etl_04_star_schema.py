@@ -1,6 +1,7 @@
 import time
 import logging
 import polars as pl
+import polars_hash as plh
 from config import FINAL_SILVER_PATH, GOLD_DIR
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s - [%(levelname)s] - %(message)s")
@@ -76,19 +77,18 @@ DIMENSIONS_CONFIG = {
     }
 }
 
+
 def process_dimensions(lazy_silver: pl.LazyFrame):
     """
     Extracts and writes each dimension table to Parquet using Polars Streaming.
-    The critical fix is ignore_nulls=True in concat_str — without this, any None field 
-    in hash_keys (e.g., pliego=None in municipalities) collapses the entire 
+    The critical fix is ignore_nulls=True in concat_str — without this, any None field
+    in hash_keys (e.g., pliego=None in municipalities) collapses the entire
     concat to null, producing the same SK for thousands of different entities.
     """
     logging.info("Extracting Dimension Tables via Polars Streaming...")
-
     for dim_name, config in DIMENSIONS_CONFIG.items():
         logging.info(f"Processing Dimension Table: {dim_name.upper()}")
         output_path = GOLD_DIR / f"dim_{dim_name}.parquet"
-
         req_columns = config["columns"]
         hash_keys   = config["hash_keys"]
         pk          = config["pk_name"]
@@ -100,21 +100,22 @@ def process_dimensions(lazy_silver: pl.LazyFrame):
             .filter(pl.col(filter_col).is_not_null())
             .unique(maintain_order=False)
             .with_columns(
-                # ignore_nulls=True: None fields are omitted from the concat 
-                # instead of collapsing the entire expression to null 
+                # ignore_nulls=True: None fields are omitted from the concat
+                # instead of collapsing the entire expression to null
                 # → unique hashes per row
-                pl.concat_str(
+                # plh.concat_str reemplaza pl.concat_str().hash()
+                # con wyhash estable cross-version
+                plh.concat_str(
                     [pl.col(c) for c in hash_keys],
                     separator="_",
                     ignore_nulls=True
                 )
-                .hash()
+                .nchash.wyhash()
                 .alias(pk)
             )
             .unique(subset=[pk], maintain_order=False)  # <--- HERE: Uniqueness filter by key
             .select([pk] + req_columns)
         )
-
         dim_lazy.sink_parquet(output_path, compression="zstd")
         logging.info(f"Saved: {output_path.name}")
 
@@ -130,12 +131,12 @@ def process_fact_table(lazy_silver: pl.LazyFrame):
 
     fact_lazy = lazy_silver.with_columns(
         *[
-            pl.concat_str(
+            plh.concat_str(
                 [pl.col(c) for c in config["hash_keys"]],
                 separator="_",
                 ignore_nulls=True   # mismo comportamiento que en las dimensiones
             )
-            .hash()
+            .nchash.wyhash()
             .alias(config["pk_name"])
             for config in DIMENSIONS_CONFIG.values()
         ]
@@ -145,7 +146,6 @@ def process_fact_table(lazy_silver: pl.LazyFrame):
         [config["pk_name"] for config in DIMENSIONS_CONFIG.values()]
         + ["anio", "fase", "monto"]
     )
-
     fact_lazy = (
         fact_lazy
         .select(fact_columns)
