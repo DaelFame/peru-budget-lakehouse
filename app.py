@@ -40,6 +40,8 @@ from dashboard.components import (
     render_ai_response,
 )
 from dashboard.theme import LIGHT_COLORS, DARK_COLORS, FONT_FAMILY
+from dashboard.config import GOLD_FACT_PATH
+IS_DEMO = "00_demo" in str(GOLD_FACT_PATH)
 
 # ----------------------------------------------------
 # AI RESPONSE DEFENSIVE INTEGRATION HELPERS
@@ -345,6 +347,7 @@ def main():
             "chat_show_sql": "View SQL Query",
             "chat_error_prefix": "Sorry, I could not process your question.",
             "chat_welcome": "Ask me anything about Peru's national budget! For example: \"What was the total PIM for 2024?\" or \"Which sector had the highest execution rate in 2023?\"",
+            "demo_warning": "⚠️ **Demo Mode** — The data shown has been trimmed to demonstrate dashboard and AI functionality. This is not the complete production dataset.",
         }
     else:
         LANG = {
@@ -419,6 +422,7 @@ def main():
             "chat_show_sql": "Ver consulta SQL",
             "chat_error_prefix": "Lo siento, no pude procesar tu pregunta.",
             "chat_welcome": "¡Pregúntame lo que quieras sobre el presupuesto nacional del Perú! Por ejemplo: \"¿Cuál fue el PIM total del 2024?\" o \"¿Qué sector tuvo la mayor tasa de ejecución en 2023?\"",
+            "demo_warning": "⚠️ **Modo Demo** — Los datos mostrados han sido recortados para mostrar el funcionamiento del dashboard y la IA. No son el conjunto de datos completo de producción.",
         }
     # ----------------------------------------------------
     # SIDEBAR CONTROL PANEL
@@ -482,6 +486,8 @@ def main():
     # ----------------------------------------------------
     st.title(LANG["main_title"])
     st.caption(LANG["subtitle"])
+    if IS_DEMO:
+        st.info(LANG["demo_warning"])
     st.markdown("---")
 
     # ----------------------------------------------------
