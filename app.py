@@ -149,7 +149,7 @@ def _inject_theme_css(colors: dict) -> None:
         .main-title {{
             font-size: 2.8rem;
             font-weight: 700;
-            color: {colors['secondary']};
+            color: {colors['secondary']} !important;
             margin-bottom: 0.2rem;
             letter-spacing: -0.02em;
         }}
@@ -157,7 +157,7 @@ def _inject_theme_css(colors: dict) -> None:
         .subtitle {{
             font-size: 1.2rem;
             font-weight: 400;
-            color: {colors['subtitle']};
+            color: {colors['subtitle']} !important;
             margin-bottom: 1.5rem;
         }}
 
@@ -186,14 +186,14 @@ def _inject_theme_css(colors: dict) -> None:
         .section-title {{
             font-size: 1.6rem;
             font-weight: 600;
-            color: {colors['secondary']};
+            color: {colors['secondary']} !important;
             margin-top: 1rem;
             margin-bottom: 1rem;
         }}
 
         .section-desc {{
             font-size: 0.9rem;
-            color: {colors['subtitle']};
+            color: {colors['subtitle']} !important;
             margin-bottom: 1rem;
         }}
         </style>
