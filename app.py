@@ -40,7 +40,7 @@ from dashboard.components import (
     render_ai_response,
 )
 from dashboard.theme import LIGHT_COLORS, DARK_COLORS, FONT_FAMILY
-from dashboard.config import GOLD_FACT_PATH
+from config import GOLD_FACT_PATH
 IS_DEMO = "00_demo" in str(GOLD_FACT_PATH)
 
 # ----------------------------------------------------
