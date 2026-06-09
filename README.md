@@ -1,205 +1,342 @@
-# Peru Budget Lakehouse 🇵🇪 🏦
-> **A High-Performance Local Data Lakehouse processing 47M+ financial records and S/. 8.4 Trillion under strict hardware constraints (4 Cores / 4GB RAM).**
+# Peru Budget Lakehouse
 
-[![Engine](https://img.shields.io/badge/Engine-Polars%20%7C%20DuckDB-blue?style=flat-square)](#)
-[![Format](https://img.shields.io/badge/Storage-Apache%20Parquet%20%28ZSTD%29-green?style=flat-square)](#)
-[![DX](https://img.shields.io/badge/Env%20Manager-uv%20%28Rust%29-orange?style=flat-square)](#)
-[![Architecture](https://img.shields.io/badge/Architecture-Medallion%20%7C%20Kimball%20Star-purple?style=flat-square)](#)
+**Analytics engineering pipeline processing 54M+ financial records (8.5GB raw CSV) on $0 infrastructure — medallion architecture, Kimball star schema, conversational LLM analytics, financial reconciliation gate.**
 
----
+[![CI](https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse/actions)
+[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
+[![Polars](https://img.shields.io/badge/Polars-1.40-orange)](https://pola.rs/)
+[![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-yellow)](https://duckdb.org/)
+[![Prefect](https://img.shields.io/badge/Prefect-3.x-purple)](https://www.prefect.io/)
+[![Docker](https://img.shields.io/badge/Docker-containerized-blue)](https://www.docker.com/)
+[![Parquet](https://img.shields.io/badge/Storage-Parquet_ZSTD-green)](https://parquet.apache.org/)
 
-## 💼 Why This Project Matters (Hiring Manager Executive Summary)
-
-As a Data Engineer, writing code that runs on infinite cloud resources is easy. **Engineering under strict local hardware boundaries to maximize efficiency and minimize cost is where true seniority lies.**
-
-This project processes **47,219,640 records** and reconciles **S/. 8,448,492,418,465.24 PEN (equivalent to $2.2+ Trillion USD)** of historical public expenditure from the Ministry of Economy and Finance of Peru (MEF). 
-
-Faced with a massive **8.5 GB raw CSV file**, standard Pandas or PySpark pipelines would immediately crash due to Out-Of-Memory (OOM) errors on typical development hardware. This architecture was built using **Polars (Rust engine)** and **DuckDB**, demonstrating how to achieve **sub-second analytical query performance** on a standard 4-Core CPU / 4GB RAM local setup—representing a **$0 infrastructure spend** for massive-scale analytics.
+**→ [Live dashboard (demo)](https://peru-fiscal-lakehouse.streamlit.app/)**
 
 ---
 
-## 🏗️ System Architecture & Data Flow
+## What this is
 
-The pipeline follows a modern **Medallion Architecture** coupled with **Kimball Dimensional Modeling** at the presentation layer, optimized with columnar physical storage.
+A production-grade ETL pipeline that ingests Peru's national budget execution dataset, normalizes it through a three-layer medallion architecture, models it as a Kimball star schema, enforces financial reconciliation before any report is produced, and exposes the Gold layer to a conversational LLM analytics interface.
+
+The domain comes from years of auditing financial statements at KPMG — reconciling ledgers, testing controls, building Excel workbooks that collapsed under their own weight. Every manual tie-out and vlookup chain from those audits is what this pipeline automates.
+
+**The engineering problem is not throughput. It is correctness under memory constraints.**  
+54M rows. 8.5GB source file. Local hardware. No cloud. No OOM errors.
+
+---
+
+## Architecture
 
 ```
-[ Bronze Layer (8.5 GB Raw CSV) ]
+8.5GB RAW CSV (54M rows)
+        │
+        ▼
+┌─────────────────────────────┐
+│  BRONZE  — Polars streaming │  29s
+│  CSV → Parquet ZSTD         │
+└──────────────┬──────────────┘
                │
-               ▼  (ETL Phase 1: 16-Batch Hexadecimal Hash-Chunking & Text Sanitization)
-[ Intermediate Consolidated Silver ]
+               ▼
+┌─────────────────────────────┐
+│  SILVER  — Normalization    │  16s
+│  Type casting, null gates   │
+│  Column standardization     │
+└──────────────┬──────────────┘
                │
-               ▼  (ETL Phase 2: Iterative Dynamic Unpivot / Melt per Fiscal Metric)
-[ Silver Layer (3.2 GB Normalized Parquet) ]
+               ▼
+┌─────────────────────────────┐
+│  SILVER  — UNPIVOT          │  3m 41s
+│  DuckDB vectorized UNPIVOT  │
+│  35 wide columns → long     │
+│  2.4GB Parquet output       │
+└──────────────┬──────────────┘
                │
-               ▼  (ELT Phase 3: Pure Streaming & Cryptographic u64 Surrogate Hashing)
-[ Gold Layer (Star Schema: 5 Dimensions + 1 Fact Table) ]
-               │
-      ┌────────┴────────┐
-      ▼ (Governance)    ▼ (Query Execution)
-[ 0.46s QA Audit ]   [ DuckDB Virtual SQL Mapping ] ──► [ C-Level OLAP Reports in 0.37s ]
-  • Volumetrics        • Zero-Copy Reads
-  • Amount Sync        • Pushdown Projection
+               ▼
+┌─────────────────────────────┐
+│  GOLD  — Star Schema        │  59s
+│  1 fact + 5 dimensions      │
+│  wyhash surrogate keys      │
+└──────┬──────────────────────┘
+       │
+  ┌────┴──────────────────┐
+  ▼                       ▼
+QA Gate            Streamlit Dashboard
+S/.0.00            ├── Deterministic DuckDB reports
+discrepancy        └── Conversational LLM analytics
+                       (NL → SQL → synthesis)
 ```
 
-### 🏎️ Architectural Design Decisions
-* **Polars LazyFrame & Streaming Engine:** Leveraged instead of Pandas (too slow/RAM intensive) or Spark (requires JVM overhead and complex local clusters). Polars utilizes native multi-threading in Rust and out-of-core streaming.
-* **DuckDB OLAP Engine:** Utilized as an embedded in-memory database to query Parquet files directly, performing vectorized query execution in sub-second times.
-* **Apache Parquet (ZSTD Compression):** Used as the primary columnar storage format across Silver and Gold layers to minimize disk footprint and optimize read projection.
+**Total pipeline: 328s (5.47 min) · Peak RAM: <4GB**
 
 ---
 
-## 🛠️ The Engineering Challenges & Solutions
+## Star schema
 
-### 1. The Out-Of-Memory (OOM) Challenge
-* **The Problem:** The raw CSV file in the Bronze layer is **8.5 GB**. Standard CSV parsers attempt to load the entire file into memory, causing instant crashes on a 4GB RAM machine.
-* **The Solution:** Implemented a **16-batch Hexadecimal Hash-Chunking Strategy** in [`01_silver_ingestion.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/01_silver_ingestion.py). By scanning the CSV lazily, we filter the dataset incrementally using the starting character of the record's hash key (`0-9` and `a-f`). This processes the giant file in 16 highly predictable, isolated batches, guaranteeing it never exceeds the RAM limit.
+```
+              dim_geografia
+             (district grain)
+                    │
+    dim_institucion ─── fact_presupuesto ─── dim_programatica
+    (executor unit)       (47M+ rows)        (activity grain)
+                    │               │
+              dim_economica    dim_financiamiento
+              (expenditure      (funding source)
+               classifier)
+```
 
-### 2. Eliminating Semantic Drift & Duplicate Entanglements
-* **The Problem:** Government employees frequently modify text columns from year to year (adding/removing accents, changing word spacing), creating artificial duplicates. Dropping duplicates with standard functions (`drop_duplicates`) would discard actual financial records, corrupting the financial ledger.
-* **The Solution:** Developed a robust two-step cleaning system:
-  1. **Orthographic Sanitization:** Lowercases, strips white spaces, and strips Spanish accents (`á, é, í, ó, ú`) dynamically from all string columns.
-  2. **Historical Consolidation:** Grouped by the business ledger key (`key_value`), selected the first occurrence for descriptive columns (`.first()`), and summed all financial columns (`.sum()`), consolidating the timeline of money without losing a single cent.
-
-### 3. Iterative Dynamic Column Transposition (Unpivot)
-* **The Problem:** The source file is "wide", having columns for each phase and year (e.g., `pim_2022`, `devengado_2022`, `girado_2022`, etc.). Performing an unpivot (melt) of 35 columns across millions of rows causes exponential RAM expansion.
-* **The Solution:** Processed the unpivot **column-by-column iteratively**. For each financial column, we scan the consolidated dataset, filter out zero/null records to discard sparse data, map the metric name and fiscal year into separate rows, calculate the transaction hash, and stream it to a temporary Parquet file. These are then joined back via Polars' streaming engine into the final Silver dataset.
-
-### 4. High-Performance Surrogate Keys Generation
-* **The Problem:** Performing joins in analytical OLAP queries using long concatenated string keys (e.g., `nivel_gobierno_sector_pliego...`) increases memory footprints and degrades query performance.
-* **The Solution:** Designed a hashing pipeline in [`02_star_schema.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/02_star_schema.py) to generate numeric surrogate keys. By concatenating dimension keys and applying a numeric `.hash()` function, we produce ultra-compact 64-bit unsigned integers (`u64`). These represent a massive improvement in storage and join throughput compared to standard string joins or UUIDs.
+**Fact grain:** one row per `(institution × geography × program × economic classifier × funding source × year × execution phase)` — a fully exploded accounting ledger at execution-level granularity, normalized for OLAP queries.
 
 ---
 
-## 📊 Performance Benchmarks & Quality Gates
+## Engineering decisions worth reading
 
-### Automated QA Audit Gatekeeper (Runs in 0.46 seconds)
-Data integrity is protected by automated assertions in [`03_data_quality_audit.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/03_data_quality_audit.py):
-* **Financial Reconciliation:** Performs a total sum comparison of all financial stages between the Silver layer and the Gold Fact Table. Any difference greater than **S/. 0.01** (to tolerate Float64 precision handling) raises a critical execution error and halts deployment.
-* **Volumetric Audit:** Validates that row counts strictly match the expected drops resulting from null-filtering rules.
+### 1. Polars streaming instead of Pandas
 
-### OLAP Query Performance (Runs in 0.37 seconds)
-Using DuckDB to map virtual views over physical Parquet files in [`04_analytical_reports.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/04_analytical_reports.py), we achieve the following times over 47M+ rows:
+`scan_parquet` + `sink_parquet` never materializes the full dataset. Peak RAM stays under 4GB regardless of input size. This is not a performance optimization — it is the only approach that runs on constrained hardware without OOM. Pandas would fail at the `read_csv` call.
 
-| Report / Analytical Query | Execution Time | Memory Overhead | Business Metric Evaluated |
-| :--- | :--- | :--- | :--- |
-| **Top 5 Spending Departments (2024)** | **~0.15s** | Zero-Copy (Mapped Views) | Real Expenditure (*Devengado*) |
-| **Historical PIM Budget Trend** | **~0.08s** | Zero-Copy (Mapped Views) | Annual trend evolution |
-| **Sector Project Density vs Budget** | **~0.14s** | Zero-Copy (Mapped Views) | Estimated unique project count vs sum |
+### 2. DuckDB for UNPIVOT, Polars for everything else
+
+Silver reshapes 35 wide financial columns (`pim_2022`, `devengado_2023`, etc.) into long format. Polars `melt()` on 54M rows at this width causes OOM. DuckDB's vectorized UNPIVOT processes this through the query optimizer with bounded memory. The tradeoff is explicit: DuckDB owns this one transformation, Polars owns everything else.
+
+### 3. `polars-hash` for stable surrogate keys instead of `pl.hash()`
+
+`pl.hash()` does not guarantee identical output across Polars version upgrades. A version bump silently breaks every FK relationship between dimension and fact tables — the join returns zero rows with no error. `polars-hash` provides deterministic wyhash keys that survive version changes, and unlike `map_elements`, it runs inside the Polars streaming engine without forcing RAM materialization.
+
+### 4. `ignore_nulls=True` in `concat_str` — a real data integrity bug
+
+Municipal entities (`nivel_gobierno = "gobierno local"`) frequently have `pliego = NULL` in source data. Without `ignore_nulls=True`, one NULL field collapses the entire surrogate key expression to NULL — producing the same key for thousands of different municipalities. Silent collision. This was a live data integrity bug, caught and fixed at the hash generation layer. See `etl_04_star_schema.py` line ~88.
+
+### 5. Financial reconciliation as a hard pipeline gate — not a warning
+
+```python
+assert abs(sum_silver - sum_gold) <= Decimal("0.01"), \
+    f"Reconciliation failed: S/. {discrepancy:.2f} discrepancy"
+```
+
+`abs(Σ silver.monto − Σ gold.monto) ≤ S/. 0.01` is enforced before any report runs. If violated, the pipeline raises and halts. This is the same control logic used in accounting systems: no downstream output until the numbers tie out.
+
+**Current result: S/. 0.00 discrepancy.**
 
 ---
 
-## ⚡ Developer Experience & Quickstart
+## Conversational analytics layer
 
-This project uses **`uv`**, the high-performance Python package manager written in Rust, ensuring environment setup is done in seconds.
+Natural language → SQL → DuckDB execution → structured executive summary.
 
-### 1. Clone & Initialize Environment
+Two LLM calls per question (Groq / `llama-3.3-70b-versatile`):
+
+```
+User question
+      │
+      ▼
+  LLM Call 1 — _translate_to_sql()
+  System prompt: 200-line schema description
+  + business rules + 8 worked examples
+      │
+      ▼
+  QueryValidationPolicy        ← SELECT-only, 20 forbidden keywords (sqlparse)
+  SQLSemanticContractValidator ← column scope, aggregation consistency,
+                                  CTE dependency graph, grain detection
+      │
+      ▼
+  DuckDB execution over Gold Parquet views
+      │
+      ▼
+  LLM Call 2 — _synthesize()
+  Input: question + SQL + results
+  Output: structured JSON
+         (intent, title, KPIs, chart spec, insights, follow-ups)
+      │
+      ▼
+  Streamlit + Plotly rendering
+```
+
+The LLM never sees raw data — it sees the schema, generates SQL, and synthesizes the execution results. Two independent validation layers run between generation and execution.
+
+---
+
+## Data quality gates
+
+| Gate | Logic | On failure |
+|---|---|---|
+| Financial reconciliation | `abs(Σ Silver − Σ Gold) ≤ S/. 0.01` | `ValueError` raised, pipeline stops |
+| Row volumetrics | Silver clean rows == Gold fact rows | Warning logged, gap reported |
+| SQL safety | SELECT-only, 20 forbidden tokens | Query rejected before execution |
+| SQL semantics | Column scope, aggregation, grain | Query rejected before execution |
+
+108 unit tests — executed automatically on every push to `main` via GitHub Actions.
+
+### Pipeline determinism
+
+`scripts/test_pipeline_diff.py` runs the full pipeline twice and compares outputs — row counts, schemas, and monetary sums must be identical across runs. Any drift raises an error. This catches non-determinism in hash generation, float precision, or row-ordering dependencies before they reach production.
+
+Silent transformation errors are worse than crashes. This pipeline fails loudly instead of producing plausible but incorrect aggregates.
+
+---
+
+## Performance
+
+| Stage | Runtime |
+|---|---|
+| Bronze ingestion | 29.34s |
+| Silver cleaning | 16.17s |
+| Silver UNPIVOT | 220.90s |
+| Gold star schema | 59.48s |
+| QA audit | 1.38s |
+| Analytical reports | 0.96s |
+| **Total** | **328.39s (5.47 min)** |
+
+Measured on commodity hardware, constrained RAM, no cloud.
+
+---
+
+## Quick start
+
+### Option A — Live demo (no setup)
+
+**[peru-fiscal-lakehouse.streamlit.app](https://peru-fiscal-lakehouse.streamlit.app/)** — runs on a pre-built 450K-row stratified sample. Open and use immediately.
+
+### Option B — Docker
+
 ```bash
-git clone https://github.com/your-username/peru-budget-lakehouse.git
+git clone https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse
 cd peru-budget-lakehouse
-
-# Install 'uv' if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | bash # Or standard install methods
-
-# Create virtual environment and install dependencies in sub-second times
-uv venv
-source .venv/bin/activate
-uv pip install -r pyproject.toml
+docker build -t peru-budget-lakehouse .
+docker run -p 8501:8501 peru-budget-lakehouse
 ```
 
-### 2. Execution Pipeline
-Run the pipelines sequentially:
+Dashboard loads at `http://localhost:8501`.
+
+### Option C — Local (uv)
+
 ```bash
-# Phase 1: Bronze to Silver Ingestion & Unpivoting
-python src/01_silver_ingestion.py
+git clone https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse
+cd peru-budget-lakehouse
+uv sync
+uv run streamlit run app.py
+```
 
-# Phase 2: Silver to Gold Dimensional Modeling (Star Schema)
-python src/02_star_schema.py
+### Option D — Full pipeline
 
-# Phase 3: Automated Data Quality Audit Gatekeeper
-python src/03_data_quality_audit.py
+Download the MEF budget execution CSV (~8.5GB) from the [MEF open data portal](https://datosabiertos.mef.gob.pe/dataset/comparacion-de-presupuesto-ejecucion-gasto/resource/510bae6d-3d37-4fb2-af35-a40ce01715f4) and place it at:
 
-# Phase 4: DuckDB Analytical Engine Execution
-python src/04_analytical_reports.py
+```
+data/comparativo_gastos_2022_2026.csv
+```
+
+Then run:
+
+```bash
+uv run python main.py   # Prefect-orchestrated, sequential
+```
+
+Or stage by stage:
+
+```bash
+uv run python src/etl_01_bronze_ingestion.py
+uv run python src/etl_02_silver_cleaning.py
+uv run python src/etl_03_silver_unpivot.py
+uv run python src/etl_04_star_schema.py
+uv run python src/etl_05_data_quality_audit.py
+uv run python src/etl_06_analytical_reports.py
 ```
 
 ---
 
-<br>
+## What to read first
 
-# Peru Budget Lakehouse 🇵🇪 🏦 (Versión en Español)
-> **Data Lakehouse local de alto rendimiento que procesa más de 47M de registros financieros y S/. 8.4 Billones bajo severas restricciones de hardware (4 Cores / 4GB RAM).**
-
----
-
-## 💼 Por Qué Importa Este Proyecto (Resumen Ejecutivo para Líderes Técnicos)
-
-Escribir código de datos que corre en infraestructuras de nube infinitas es fácil. **Hacer ingeniería de datos eficiente bajo severas limitaciones de hardware locales para maximizar el rendimiento y reducir costos a cero es donde radica la verdadera experiencia.**
-
-Este proyecto procesa **47,219,640 registros** y concilia **S/. 8,448,492,418,465.24 PEN (más de $2.2 Billones de USD)** de historial de gastos públicos del Ministerio de Economía y Finanzas de Perú (MEF).
-
-Al enfrentarse a un archivo **CSV original de 8.5 GB**, cualquier pipeline convencional en Pandas o PySpark colapsaría debido a errores de memoria (OOM) en una computadora promedio. Esta arquitectura, construida con **Polars (motor Rust)** y **DuckDB**, demuestra cómo lograr **rendimiento analítico de subsegundos** en un hardware estándar de 4 núcleos y 4 GB de RAM, representando un **gasto de infraestructura de $0**.
+| File | What it demonstrates |
+|---|---|
+| `src/etl_03_silver_unpivot.py` | DuckDB UNPIVOT — the core memory tradeoff |
+| `src/etl_04_star_schema.py` | `ignore_nulls=True` on line ~88 — why it exists |
+| `src/etl_05_data_quality_audit.py` | Financial reconciliation gate logic |
+| `src/dashboard/ai_engine.py` | Two-LLM-call pipeline, SQL validation layers |
+| `src/dashboard/semantic_contract.py` | `SQLSemanticContractValidator` — column scope, grain enforcement |
+| `main.py` | Prefect `wait_for=` dependency chain |
+| `src/config.py` | Hardware auto-detection, smart path resolver |
 
 ---
 
-## 🏗️ Arquitectura del Sistema y Flujo de Datos
+## Stack
 
-El pipeline sigue una **Arquitectura Medallón** combinada con **Modelado Dimensional Kimball (Esquema Estrella)** en la capa de presentación, optimizada mediante almacenamiento físico columnar en Parquet.
+| Tool | Why |
+|---|---|
+| Polars 1.40 | Streaming LazyFrame engine, Rust core, zero-copy scans |
+| DuckDB | Vectorized UNPIVOT, embedded OLAP, zero-copy Parquet reads |
+| polars-hash 0.6 | Cross-version stable wyhash surrogate keys |
+| Groq / llama-3.3-70b | LLM backend for NL→SQL and synthesis |
+| Prefect 3.x | Task-level observability, `wait_for=` dependency enforcement |
+| Streamlit | Dashboard and conversational UI |
+| Docker | Reproducible environment — eliminates native dependency friction (Polars/Rust, DuckDB) |
+| GitHub Actions | CI — 108 unit tests on every push to `main` |
+| Parquet + ZSTD | 3–5x compression vs CSV, columnar pushdown |
+| uv | Rust-based package manager, reproducible lockfile |
+
+---
+
+## Project structure
 
 ```
-[ Capa Bronze (8.5 GB CSV Crudo) ]
-               │
-               ▼  (ETL Fase 1: Hash-Chunking Hexadecimal de 16 Lotes y Sanitización)
-[ Silver Intermedio Consolidado ]
-               │
-               ▼  (ETL Fase 2: Unpivot Dinámico e Iterativo por Métrica Financiera)
-[ Capa Silver (3.2 GB Parquet Normalizado) ]
-               │
-               ▼  (ELT Fase 3: Streaming y Hasheo u64 de Llaves Subrogadas)
-[ Capa Gold (Esquema Estrella: 5 Dimensiones + 1 Tabla de Hechos de 47M+ filas) ]
-               │
-      ┌────────┴────────┐
-      ▼ (Gobernanza)    ▼ (Motor de Consultas)
-[ Auditoría QA - 0.46s ]   [ Mapeo de Vistas Virtuales DuckDB ] ──► [ Reportes OLAP en 0.37s ]
-  • Volumetría              • Lecturas Zero-Copy
-  • Sincronía de Montos     • Pushdown de Proyecciones
+peru-budget-lakehouse/
+├── main.py                               # Prefect orchestration entry point
+├── Dockerfile
+├── src/
+│   ├── config.py                         # Paths, hardware detection, constants
+│   ├── etl_01_bronze_ingestion.py
+│   ├── etl_02_silver_cleaning.py
+│   ├── etl_03_silver_unpivot.py          # DuckDB UNPIVOT
+│   ├── etl_04_star_schema.py             # Star schema, wyhash surrogate keys
+│   ├── etl_05_data_quality_audit.py      # Reconciliation gate
+│   ├── etl_06_analytical_reports.py
+│   ├── dashboard/
+│   │   ├── ai_engine.py                  # Two-LLM-call pipeline
+│   │   ├── semantic_contract.py          # SQL semantic validator
+│   │   ├── grain_router.py               # Grain classifier (pre-LLM)
+│   │   ├── components.py                 # Streamlit rendering
+│   │   └── database.py                   # DuckDB view registration
+│   └── observability/                    # Query execution trace model
+├── scripts/
+│   └── test_pipeline_diff.py             # Determinism checker (dual-run comparison)
+├── tests/                                # 108 unit tests
+├── sql/
+├── data/
+│   ├── 00_demo/                          # Pre-built 450K-row Gold Parquet
+│   ├── 01_bronze/                        # gitignored
+│   ├── 02_silver/                        # gitignored
+│   └── 03_gold/                          # gitignored
+├── pyproject.toml
+└── uv.lock
 ```
 
 ---
 
-## 🛠️ Retos de Ingeniería y Soluciones
+## Roadmap
 
-### 1. El Desafío de Out-Of-Memory (OOM)
-* **El Problema:** El archivo CSV crudo en Bronze pesa **8.5 GB**. Intentar cargarlo de forma directa en un sistema de 4GB de RAM resulta en un colapso del sistema.
-* **La Solución:** Con una estrategia de **Hash-Chunking Hexadecimal de 16 lotes** en [`01_silver_ingestion.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/01_silver_ingestion.py). Polars escanea el CSV perezosamente (`scan_csv`) y procesa de manera incremental filtrando los registros según el primer caracter de su clave hash (`0-9` y `a-f`). Esto fragmenta el archivo gigante en 16 bloques aislados y sumamente predecibles, evitando exceder los límites de RAM.
-
-### 2. Eliminación de Duplicados Falsos sin Pérdida de Dinero
-* **El Problema:** Variaciones tipográficas de los funcionarios año tras año (tildes, espacios) crean registros que parecen duplicados en el texto pero representan transacciones financieras reales del SIAF. Eliminar filas con un simple `drop_duplicates` destruiría dinero real y descuadraría el balance general.
-* **La Solución:** Diseño de un proceso de dos etapas:
-  1. **Sanitización Ortográfica:** Normalización dinámica a minúsculas, remoción de espacios extremos y remoción de tildes (`á, é, í, ó, ú`) en todas las columnas de texto.
-  2. **Consolidación Histórica:** Agrupación por la clave única de negocio (`key_value`), conservando el primer valor de los textos (`.first()`) y sumando todas las fases financieras (`.sum()`), consolidando la línea de tiempo del dinero sin perder un solo centavo.
-
-### 3. Transposición de Columnas (Unpivot) Iterativa de Alto Rendimiento
-* **El Problema:** El dataset original posee columnas horizontales para cada año y fase (ej. `pim_2022`, `devengado_2022`). Realizar un unpivot simultáneo de 35 columnas genera una expansión exponencial de registros en memoria.
-* **La Solución:** Se estructuró un procesamiento unpivot **columna por columna de forma iterativa**. Por cada métrica financiera, se escanea el archivo consolidado, se filtran registros en cero o nulos, se transforma el nombre de la columna y el año a filas, se genera su hash único y se escribe un archivo Parquet temporal comprimido con ZSTD. Finalmente, la API de streaming de Polars unifica todos los archivos temporales y escribe el archivo Silver definitivo.
-
-### 4. Llaves Subrogadas Numéricas vs Joins de Texto
-* **El Problema:** Realizar Joins en queries analíticas utilizando largas cadenas de texto concatenadas (ej. `departamento_provincia_distrito...`) consume demasiada memoria RAM y ralentiza las consultas de negocio.
-* **La Solución:** Diseñado un pipeline en [`02_star_schema.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/02_star_schema.py) que concatena las combinaciones de llaves y les aplica un hasheo numérico `.hash()`, generando enteros sin signo de 64 bits (`u64`). Esto reduce el peso de las claves al mínimo y optimiza drásticamente el rendimiento de los joins en comparación con el uso de strings o UUIDs.
+- [x] Medallion pipeline: Bronze → Silver → Gold (streaming at every layer)
+- [x] Kimball star schema: 1 fact + 5 dimensions, wyhash surrogate keys
+- [x] Financial reconciliation QA gate (S/. 0.01 tolerance)
+- [x] Prefect orchestration with explicit sequential dependencies
+- [x] DuckDB analytical reports layer
+- [x] Demo dataset (stratified 450K-row sample)
+- [x] Live Streamlit dashboard
+- [x] Conversational LLM analytics (NL → SQL → synthesis, two-call pipeline)
+- [x] SQL safety guardrails (SELECT-only + semantic contract validator)
+- [x] 108 unit tests + GitHub Actions CI
+- [x] Docker
+- [ ] Wire `GrainRouter` into `AIEngine.ask()` — pre-LLM grain classification exists and is tested, not yet connected to production flow
+- [ ] Pass active sidebar filters into LLM context
+- [ ] AWS S3 integration (remote Parquet reads via DuckDB S3 extension)
 
 ---
 
-## 📊 Rendimiento y Auditoría de Datos
+## Author
 
-### Auditoría QA Automatizada (Ejecución en 0.46 segundos)
-La integridad financiera está custodiada por controles de calidad estrictos en [`03_data_quality_audit.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/03_data_quality_audit.py):
-* **Conciliación Financiera:** Suma total de todos los montos entre la capa Silver y la Tabla de Hechos de Gold. Cualquier desviación mayor a **S/. 0.01** (para tolerar precisión Float64) aborta inmediatamente la ejecución levantando un error crítico.
-* **Consistencia Volumétrica:** Monitorea que la cantidad de registros inyectados en Gold corresponda estrictamente con las reglas de negocio de filtrado de ceros y nulos.
+Accounting and auditing professional transitioning to analytics engineering.
 
-### Rendimiento OLAP (Ejecución en 0.37 segundos)
-Utilizando DuckDB para mapear vistas virtuales sobre los Parquet estructurados en [`04_analytical_reports.py`](file:///home/jcc/Proyectos/peru-budget-lakehouse/src/04_analytical_reports.py), se obtienen los siguientes tiempos sobre los 47M+ de registros:
+Years at KPMG auditing financial statements: reconciling ledgers, testing controls, chasing discrepancies through multi-tab Excel workbooks. The financial domain knowledge here — fiscal periods, budget execution phases, economic classification charts, reconciliation controls — is what makes this more than a tutorial project. The engineering side — streaming pipelines, dimensional modeling, LLM integration, data quality automation — is the transition.
 
-| Reporte Analítico / Consulta SQL | Tiempo de Ejecución | Uso de Memoria Adicional | Métrica de Negocio Evaluada |
-| :--- | :--- | :--- | :--- |
-| **Top 5 Departamentos con Mayor Gasto (2024)** | **~0.15s** | Zero-Copy (Vistas Mapeadas) | Gasto Real (*Devengado*) |
-| **Evolución Histórica del Presupuesto PIM** | **~0.08s** | Zero-Copy (Vistas Mapeadas) | Tendencia anual |
-| **Densidad de Proyectos por Sector vs Presupuesto** | **~0.14s** | Zero-Copy (Vistas Mapeadas) | Conteo aproximado de proyectos únicos vs suma total |
+**Target roles:** Analytics Engineer · BI Engineer · Financial Data Analyst
+
+> *Replace `#` below with your actual LinkedIn and GitHub URLs before publishing.*
+
+[LinkedIn](#) · [GitHub](#)
