@@ -2,7 +2,7 @@
 
 **Analytics engineering pipeline processing 54M+ financial records (8.5GB raw CSV) on $0 infrastructure — medallion architecture, Kimball star schema, conversational LLM analytics, financial reconciliation gate.**
 
-[![CI](https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)](https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse/actions)
+[![CI](https://github.com/DaelFame/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)]( https://github.com/DaelFame/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)
 [![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
 [![Polars](https://img.shields.io/badge/Polars-1.40-orange)](https://pola.rs/)
 [![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-yellow)](https://duckdb.org/)
@@ -199,7 +199,7 @@ Measured on commodity hardware, constrained RAM, no cloud.
 ### Option B — Docker
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse
+git clone https://github.com/DaelFame/peru-budget-lakehouse.git
 cd peru-budget-lakehouse
 docker build -t peru-budget-lakehouse .
 docker run -p 8501:8501 peru-budget-lakehouse
@@ -210,7 +210,7 @@ Dashboard loads at `http://localhost:8501`.
 ### Option C — Local (uv)
 
 ```bash
-git clone https://github.com/YOUR_GITHUB_USERNAME/peru-budget-lakehouse
+git clone https://github.com/DaelFame/peru-budget-lakehouse.git
 cd peru-budget-lakehouse
 uv sync
 uv run streamlit run app.py
@@ -329,14 +329,5 @@ peru-budget-lakehouse/
 
 ---
 
-## Author
 
-Accounting and auditing professional transitioning to analytics engineering.
-
-Years at KPMG auditing financial statements: reconciling ledgers, testing controls, chasing discrepancies through multi-tab Excel workbooks. The financial domain knowledge here — fiscal periods, budget execution phases, economic classification charts, reconciliation controls — is what makes this more than a tutorial project. The engineering side — streaming pipelines, dimensional modeling, LLM integration, data quality automation — is the transition.
-
-**Target roles:** Analytics Engineer · BI Engineer · Financial Data Analyst
-
-> *Replace `#` below with your actual LinkedIn and GitHub URLs before publishing.*
-
-[LinkedIn](#) · [GitHub](#)
+[LinkedIn](https://www.linkedin.com/in/joaquincardenas-data) · [GitHub](https://github.com/DaelFame)
