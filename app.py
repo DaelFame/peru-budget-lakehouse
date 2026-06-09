@@ -1,5 +1,4 @@
-"""
-National Budget Execution Intelligence App
+"""National Budget Execution Intelligence App
 
 Streamlit entry point for the Peru Budget Lakehouse executive dashboard.
 Coordinates responsive filters in the sidebar control panel with reactive DuckDB
@@ -149,7 +148,6 @@ def _inject_theme_css(colors: dict) -> None:
         .main-title {{
             font-size: 2.8rem;
             font-weight: 700;
-            color: {colors['secondary']} !important;
             margin-bottom: 0.2rem;
             letter-spacing: -0.02em;
         }}
@@ -157,7 +155,6 @@ def _inject_theme_css(colors: dict) -> None:
         .subtitle {{
             font-size: 1.2rem;
             font-weight: 400;
-            color: {colors['subtitle']} !important;
             margin-bottom: 1.5rem;
         }}
 
@@ -186,14 +183,12 @@ def _inject_theme_css(colors: dict) -> None:
         .section-title {{
             font-size: 1.6rem;
             font-weight: 600;
-            color: {colors['secondary']} !important;
             margin-top: 1rem;
             margin-bottom: 1rem;
         }}
 
         .section-desc {{
             font-size: 0.9rem;
-            color: {colors['subtitle']} !important;
             margin-bottom: 1rem;
         }}
         </style>
@@ -535,8 +530,8 @@ def main():
     # ----------------------------------------------------
     # HEADER LAYOUT
     # ----------------------------------------------------
-    st.markdown(f'<div class="main-title">{LANG["main_title"]}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="subtitle">{LANG["subtitle"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="main-title" style="color: {colors["secondary"]}">{LANG["main_title"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="subtitle" style="color: {colors["subtitle"]}">{LANG["subtitle"]}</div>', unsafe_allow_html=True)
     st.markdown("---")
 
     # ----------------------------------------------------
@@ -558,16 +553,16 @@ def main():
     # ----------------------------------------------------
     # LAYER 1: EXECUTIVE OVERVIEW (KPI CARDS)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title">{LANG["sec_kpis"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_kpis"]}</div>', unsafe_allow_html=True)
     render_kpi_cards(metrics, LANG)
     st.markdown("---")
 
     # ----------------------------------------------------
     # LAYER 2: ECONOMIC COMPOSITION (FULL WIDTH)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title">{LANG["sec_economic"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_economic"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div class='section-desc'>"
+        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
         f"{LANG['sub_economic']}"
         f"</div>",
         unsafe_allow_html=True
@@ -594,9 +589,9 @@ def main():
     chart_col1, chart_col2 = st.columns(2)
 
     with chart_col1:
-        st.markdown(f'<div class="section-title">{LANG["sec_concentrations"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_concentrations"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div class='section-desc'>"
+            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
             f"{LANG['sub_concentrations']}"
             f"</div>",
             unsafe_allow_html=True
@@ -627,9 +622,9 @@ def main():
             st.info(LANG["no_conc_data"])
 
     with chart_col2:
-        st.markdown(f'<div class="section-title">{LANG["sec_variance"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_variance"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div class='section-desc'>"
+            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
             f"{LANG['sub_variance']}"
             f"</div>",
             unsafe_allow_html=True
@@ -667,9 +662,9 @@ def main():
     fin_col1, fin_col2 = st.columns(2)
 
     with fin_col1:
-        st.markdown(f'<div class="section-title">{LANG["sec_financing"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_financing"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div class='section-desc'>"
+            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
             f"{LANG['sub_financing']}"
             f"</div>",
             unsafe_allow_html=True
@@ -689,9 +684,9 @@ def main():
             st.info(LANG["no_financing_data"])
 
     with fin_col2:
-        st.markdown(f'<div class="section-title">{LANG["sec_programmatic"]}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_programmatic"]}</div>', unsafe_allow_html=True)
         st.markdown(
-            f"<div class='section-desc'>"
+            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
             f"{LANG['sub_programmatic']}"
             f"</div>",
             unsafe_allow_html=True
@@ -729,9 +724,9 @@ def main():
     # ----------------------------------------------------
     # LAYER 5: GEOGRAPHIC ACCOUNTABILITY MATRIX (HEATMAP)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title">{LANG["sec_heatmap"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_heatmap"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div class='section-desc'>"
+        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
         f"{LANG['sub_heatmap']}"
         f"</div>",
         unsafe_allow_html=True
@@ -754,9 +749,9 @@ def main():
     # LAYER 6: AI-POWERED CONVERSATIONAL BUDGET ANALYST
     # ----------------------------------------------------
     st.markdown("---")
-    st.markdown(f'<div class="section-title">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)
     st.markdown(
-        f"<div class='section-desc'>"
+        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
         f"{LANG['sub_ai_chat']}"
         f"</div>",
         unsafe_allow_html=True
