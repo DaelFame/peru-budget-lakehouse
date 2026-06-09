@@ -285,6 +285,9 @@ def main():
     st.session_state["ui_colors"] = colors
     _inject_theme_css(colors)
 
+    st.write(f"**DEBUG** — dark_mode: `{st.session_state.dark_mode}`")
+    st.write(f"**DEBUG** — title color: `{colors['secondary']}` — subtitle color: `{colors['subtitle']}`")
+
     # Load and initialize control panel filters from the DuckDB gold layers
     try:
         filters = cached_load_filters()
