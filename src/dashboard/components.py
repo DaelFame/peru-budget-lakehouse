@@ -192,7 +192,7 @@ def render_top_concentrations(df: pd.DataFrame, lang_dict: dict = None) -> None:
         return
 
     # Apply a monochrome strategy where only the top 1 bar gets the primary accent
-    bar_colors = ["#CBD5E1"] * n_bars  # Soft neutral gray for non-top bars
+    bar_colors = [_get_colors().get("bar_neutral", "#CBD5E1")] * n_bars  # Soft neutral gray for non-top bars
     bar_colors[-1] = _get_colors().get("primary", "#8B0000")  # Top bar highlighted
 
     # Bind the custom currency helper to the text field
@@ -234,7 +234,7 @@ def render_top_concentrations(df: pd.DataFrame, lang_dict: dict = None) -> None:
     )
 
     # Compliant with latest Streamlit parameters (width="stretch")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_concentrations_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -276,7 +276,7 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
             y=df_clean["dimension"],
             x=df_clean["pim"],
             orientation="h",
-            marker=dict(color="#94A3B8"),
+            marker=dict(color=_get_colors().get("bar_muted", "#94A3B8")),
             hovertemplate=f"{lang_dict.get('chart_planned_val', 'Planned (PIM)')}: S/. %{{x:{plotly_fmt}}}<extra></extra>"
         )
     )
@@ -319,7 +319,7 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
     )
 
     # Compliant with latest Streamlit parameters (width="stretch")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_variance_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -355,10 +355,11 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
     # Sort index descending so departments are alphabetical from top to bottom
     pivot_df = pivot_df.sort_index(ascending=False)
 
-    # Elegant single restrained gradient from clean background gray to executive primary
+    # Status-based diverging colorscale: red (low) → amber (medium) → green (high)
     colorscale = [
-        [0.0, "#F8FAFC"],
-        [1.0, _get_colors().get("primary", "#8B0000")]
+        [0.0, _get_colors()["danger"]],
+        [0.4, _get_colors()["warning"]],
+        [0.75, _get_colors()["success"]],
     ]
 
     # FIX: Configured colorbar using modern nested dictionary structure to resolve Plotly crash
@@ -379,6 +380,8 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
             y=pivot_df.index.tolist(),
             colorscale=colorscale,
             colorbar=colorbar_config,
+            zmin=0,
+            zmax=100,
             hovertemplate="Department: %{y}<br>Year: %{x}<br>Execution Rate: %{z:.1f}%<extra></extra>"
         )
     )
@@ -403,7 +406,7 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
     )
 
     # Compliant with latest Streamlit parameters (width="stretch")
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_heatmap_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -440,7 +443,7 @@ def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> Non
             y=df_clean["economic_category"],
             x=df_clean["pim"],
             orientation="h",
-            marker=dict(color="#94A3B8"),
+            marker=dict(color=_get_colors().get("bar_muted", "#94A3B8")),
             hovertemplate=f"Category: %{{y}}<br>PIM: S/. %{{x:{plotly_fmt}}}<extra></extra>"
         )
     )
@@ -476,7 +479,7 @@ def render_economic_composition(df: pd.DataFrame, lang_dict: dict = None) -> Non
         margin=dict(l=10, r=10, t=40, b=10),
         height=400,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_economic_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -503,7 +506,7 @@ def render_financing_structure(df: pd.DataFrame, lang_dict: dict = None) -> None
     df_clean = df_clean.sort_values(by="pim", ascending=True)
 
     n_bars = len(df_clean)
-    bar_colors = ["#CBD5E1"] * n_bars
+    bar_colors = [_get_colors().get("bar_neutral", "#CBD5E1")] * n_bars
     if n_bars > 0:
         bar_colors[-1] = _get_colors().get("primary", "#8B0000")
 
@@ -534,7 +537,7 @@ def render_financing_structure(df: pd.DataFrame, lang_dict: dict = None) -> None
         margin=dict(l=10, r=10, t=10, b=10),
         height=350,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_financing_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -564,7 +567,7 @@ def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> 
     if n_bars == 0:
         return
 
-    bar_colors = ["#CBD5E1"] * n_bars
+    bar_colors = [_get_colors().get("bar_neutral", "#CBD5E1")] * n_bars
     if n_bars > 0:
         bar_colors[-1] = _get_colors().get("primary", "#8B0000")
 
@@ -596,7 +599,7 @@ def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> 
         margin=dict(l=10, r=margin_r, t=10, b=10),
         height=350,
     )
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_programmatic_{st.session_state.get('dark_mode', False)}")
 
 
 # ----------------------------------------------------
@@ -798,7 +801,7 @@ def _render_trend_line_chart(df: pd.DataFrame, lang_dict: dict = None) -> None:
         height=350,
     )
 
-    st.plotly_chart(fig, width="stretch")
+    st.plotly_chart(fig, width="stretch", key=f"chart_trend_{st.session_state.get('dark_mode', False)}")
 
 
 def _route_visualization(intent: str, chart_type: str, chart_title: str, df: pd.DataFrame, lang_dict: dict) -> None:
