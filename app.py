@@ -283,47 +283,38 @@ def main():
             "sector": "Executive Sector",
             "dept": "Executing Department",
             "footer": "Peru Budget Lakehouse • Executive Dashboard v2.0",
-
             "main_title": "🇵🇪 National Budget Execution Intelligence",
             "subtitle": "Boardroom-Grade Financial Dashboard & Public Expenditure Accountability",
             "empty_state": "⚠️ No records found matching the active criteria. Please adjust your Control Panel filters in the sidebar.",
-
-            "sec_kpis": "Core Performance Indicators",
+            "sec_kpis": "How Much Was Planned — and How Much Actually Got Spent?",
             "kpi_pim": "Total Planned Budget (PIM)",
             "kpi_executed": "Total Executed Budget",
             "kpi_rate": "Budget Execution Rate",
             "kpi_gap": "Unexecuted Budget Gap",
             "execution_warning": "⚠️ Low Execution (< 50%)",
-
-            "sec_concentrations": "Top Budget Concentrations",
+            "sec_concentrations": "Where Does Most of Peru's Money Go?",
             "sub_concentrations": "Identifies the highest budget concentrations. Choose Sector or Department below to group.",
             "toggle_conc": "Group Concentrations By",
             "toggle_options": ["Sector", "Department"],
             "no_conc_data": "No concentration data found matching the active filters.",
-
-            "sec_variance": "Budget Execution Variance",
+            "sec_variance": "Who Promised the Most — and Who Delivered?",
             "sub_variance": "Compares Planned (PIM) vs Executed (Devengado) values. Choose a dimension below.",
             "toggle_var": "Group Variance By",
             "no_var_data": "No comparative variance data found matching the active filters.",
-
-            "sec_heatmap": "Geographic Accountability Matrix",
+            "sec_heatmap": "Which Regions Are Falling Behind, Year After Year?",
             "sub_heatmap": "Heatmap distribution illustrating execution rates (%) grouped by Executing Department across all available Fiscal Years. Muted shades indicate lower output levels, and deeper Crimson represents solid progress.",
             "no_heatmap_data": "No geographic heatmap data found matching the active filters.",
-
-            "sec_economic": "Economic Classification Composition",
+            "sec_economic": "Is the Budget Going to People, Services, or Debt?",
             "sub_economic": "Budget distribution by economic category (Personnel, Goods & Services, Investment, Debt Service, etc.).",
             "no_economic_data": "No economic composition data found matching the active filters.",
-
-            "sec_financing": "Financing Source Structure",
+            "sec_financing": "Who's Actually Funding the Peruvian State?",
             "sub_financing": "Budget allocation by financing source (Treasury, Loans, Donations, Direct Revenue, etc.).",
             "no_financing_data": "No financing structure data found matching the active filters.",
-
-            "sec_programmatic": "Programmatic Allocation (Top-N)",
+            "sec_programmatic": "Which Programs Absorb the Biggest Slice?",
             "sub_programmatic": "Largest budget allocations by program, project, or government function.",
             "toggle_prog": "Group Programmatic By",
             "prog_toggle_options": ["Budget Program", "Project", "Government Function"],
             "no_prog_data": "No programmatic allocation data found matching the active filters.",
-
             # Financial/Formatting mappings
             "billions_symbol": "B",
             "millions_symbol": "M",
@@ -332,7 +323,6 @@ def main():
             "legend_pim": "Planned Budget (PIM)",
             "legend_dev": "Executed Budget (Dev)",
             "conc_margin_r": 110,
-
             # Spinners
             "spinner_metrics": "Extracting financial metrics...",
             "spinner_conc": "Aggregating concentration data...",
@@ -341,15 +331,13 @@ def main():
             "spinner_econ": "Aggregating economic composition...",
             "spinner_fin": "Aggregating financing structure...",
             "spinner_prog": "Aggregating programmatic allocation...",
-
             # Chart titles & tooltips
             "chart_budget": "Budget",
             "chart_dimension": "Dimension",
             "chart_executed_val": "Executed (Devengado)",
             "chart_planned_val": "Planned (PIM)",
-
             # AI Chat
-            "sec_ai_chat": "AI Budget Analyst",
+            "sec_ai_chat": "Ask the Data Anything",
             "sub_ai_chat": "Ask natural language questions about the budget data. The AI translates your question into SQL, queries the database, and summarizes the results.",
             "chat_input_placeholder": "Ask a question about the budget...",
             "chat_spinner": "Analyzing your question...",
@@ -369,47 +357,38 @@ def main():
             "sector": "Sector Ejecutivo",
             "dept": "Departamento Ejecutor",
             "footer": "Peru Budget Lakehouse • Dashboard Ejecutivo v2.0",
-
             "main_title": "🇵🇪 Inteligencia de Ejecución del Presupuesto Nacional",
             "subtitle": "Dashboard Financiero de Nivel Directivo y Rendición de Cuentas del Gasto Público",
             "empty_state": "⚠️ No se encontraron registros que coincidan con los criterios activos. Por favor, ajuste los filtros del Panel de Control en la barra lateral.",
-
-            "sec_kpis": "Indicadores Clave de Desempeño",
+            "sec_kpis": "¿Cuánto se programó — y cuánto se ejecutó realmente?",
             "kpi_pim": "Presupuesto Programado Total (PIM)",
             "kpi_executed": "Presupuesto Ejecutado Total",
             "kpi_rate": "Tasa de Ejecución Presupuestal",
             "kpi_gap": "Brecha de Presupuesto No Ejecutado",
             "execution_warning": "⚠️ Baja Ejecución (< 50%)",
-
-            "sec_concentrations": "Principales Concentraciones Presupuestales",
+            "sec_concentrations": "¿A dónde va la mayor parte del dinero del Estado?",
             "sub_concentrations": "Identifica las mayores concentraciones presupuestarias. Seleccione Sector o Departamento a continuación para agrupar.",
             "toggle_conc": "Agrupar Concentraciones Por",
             "toggle_options": ["Sector", "Departamento"],
             "no_conc_data": "No se encontraron datos de concentración que coincidan con los filtros activos.",
-
-            "sec_variance": "Variación de la Ejecución Presupuestal",
+            "sec_variance": "¿Quién prometió más — y quién cumplió?",
             "sub_variance": "Compara los valores Programados (PIM) vs Ejecutados (Devengado). Seleccione una dimensión a continuación.",
             "toggle_var": "Agrupar Variación Por",
             "no_var_data": "No se encontraron datos de variación comparativa que coincidan con los filtros activos.",
-
-            "sec_heatmap": "Matriz de Responsabilidad Geográfica",
+            "sec_heatmap": "¿Qué regiones siguen quedándose atrás, año tras año?",
             "sub_heatmap": "Distribución del mapa de calor que ilustra las tasas de ejecución (%) agrupadas por Departamento Ejecutor a lo largo de todos los Años Fiscales disponibles. Los tonos tenues indican niveles de producción más bajos, y el carmesí más profundo representa un progreso sólido.",
             "no_heatmap_data": "No se encontraron datos del mapa de calor geográfico que coincidan con los filtros activos.",
-
-            "sec_economic": "Composición por Clasificación Económica",
+            "sec_economic": "¿El presupuesto va a personas, servicios o deuda?",
             "sub_economic": "Distribución presupuestal por categoría económica (Personal, Bienes y Servicios, Inversiones, Servicio de la Deuda, etc.).",
             "no_economic_data": "No se encontraron datos de composición económica que coincidan con los filtros activos.",
-
-            "sec_financing": "Estructura por Fuente de Financiamiento",
+            "sec_financing": "¿Quién financia realmente al Estado peruano?",
             "sub_financing": "Asignación presupuestal por fuente de financiamiento (Tesoro, Préstamos, Donaciones, Recursos Directamente Recaudados, etc.).",
             "no_financing_data": "No se encontraron datos de estructura de financiamiento que coincidan con los filtros activos.",
-
-            "sec_programmatic": "Asignación Programática (Top-N)",
+            "sec_programmatic": "¿Qué programas se llevan la mayor tajada?",
             "sub_programmatic": "Mayores asignaciones presupuestales por programa, proyecto o función de gobierno.",
             "toggle_prog": "Agrupar Programático Por",
             "prog_toggle_options": ["Programa Presupuestal", "Proyecto", "Función de Gobierno"],
             "no_prog_data": "No se encontraron datos de asignación programática que coincidan con los filtros activos.",
-
             # Financial/Formatting mappings
             "billions_symbol": "Mil MM",
             "millions_symbol": "Millones",
@@ -418,7 +397,6 @@ def main():
             "legend_pim": "Presupuesto Programado (PIM)",
             "legend_dev": "Presupuesto Ejecutado (Dev)",
             "conc_margin_r": 160,
-
             # Spinners
             "spinner_metrics": "Extrayendo métricas financieras...",
             "spinner_conc": "Agrupando datos de concentración...",
@@ -427,24 +405,21 @@ def main():
             "spinner_econ": "Agrupando composición económica...",
             "spinner_fin": "Agrupando estructura de financiamiento...",
             "spinner_prog": "Agrupando asignación programática...",
-
             # Chart titles & tooltips
             "chart_budget": "Presupuesto",
             "chart_dimension": "Dimensión",
             "chart_executed_val": "Ejecutado (Devengado)",
             "chart_planned_val": "Planificado (PIM)",
-
             # AI Chat
-            "sec_ai_chat": "Analista Presupuestal IA",
-            "sub_ai_chat": "Haga preguntas en lenguaje natural sobre los datos presupuestarios. La IA traduce su pregunta a SQL, consulta la base de datos y resume los resultados.",
-            "chat_input_placeholder": "Haga una pregunta sobre el presupuesto...",
-            "chat_spinner": "Analizando su pregunta...",
-            "ai_chat_disabled": "Configure la variable GROQ_API_KEY para habilitar el Analista Presupuestal IA.",
-            "chat_show_sql": "Ver Consulta SQL",
-            "chat_error_prefix": "Lo siento, no pude procesar su pregunta.",
-            "chat_welcome": "¡Pregúnteme cualquier cosa sobre el presupuesto nacional de Perú! Por ejemplo: \"¿Cuál fue el PIM total para 2024?\" o \"¿Qué sector tuvo la tasa de ejecución más alta en 2023?\"",
+            "sec_ai_chat": "Pregúntale lo que quieras a los datos",
+            "sub_ai_chat": "Haz preguntas en lenguaje natural sobre los datos presupuestarios. La IA traduce tu pregunta a SQL, consulta la base de datos y resume los resultados.",
+            "chat_input_placeholder": "Haz una pregunta sobre el presupuesto...",
+            "chat_spinner": "Analizando tu pregunta...",
+            "ai_chat_disabled": "Configura la variable de entorno GROQ_API_KEY para habilitar el Analista IA.",
+            "chat_show_sql": "Ver consulta SQL",
+            "chat_error_prefix": "Lo siento, no pude procesar tu pregunta.",
+            "chat_welcome": "¡Pregúntame lo que quieras sobre el presupuesto nacional del Perú! Por ejemplo: \"¿Cuál fue el PIM total del 2024?\" o \"¿Qué sector tuvo la mayor tasa de ejecución en 2023?\"",
         }
-
     # ----------------------------------------------------
     # SIDEBAR CONTROL PANEL
     # ----------------------------------------------------
