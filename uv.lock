@@ -2129,6 +2129,7 @@ dependencies = [
     { name = "memory-profiler" },
     { name = "plotly" },
     { name = "polars" },
+    { name = "polars-hash" },
     { name = "prefect" },
     { name = "pyarrow" },
     { name = "python-dotenv" },
@@ -2153,6 +2154,7 @@ requires-dist = [
     { name = "memory-profiler", specifier = ">=0.61.0" },
     { name = "plotly", specifier = ">=6.7.0" },
     { name = "polars", specifier = ">=1.40.1" },
+    { name = "polars-hash", specifier = ">=0.6.0" },
     { name = "prefect", specifier = ">=3.7.2" },
     { name = "pyarrow", specifier = ">=24.0.0" },
     { name = "python-dotenv", specifier = ">=1.2.2" },
@@ -2308,6 +2310,26 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/b3/8c/bc9bc948058348ed43117cecc3007cd608f395915dae8a00974579a5dab1/polars-1.40.1.tar.gz", hash = "sha256:ab2694134b137596b5a59bfd7b4c54ebbc9b59f9403127f18e32d363777552e8", size = 733574, upload-time = "2026-04-22T19:15:55.507Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ea/91/74fc60d94488685a92ac9d49d7ec55f3e91fe9b77942a6235a5fa7f249c3/polars-1.40.1-py3-none-any.whl", hash = "sha256:c0f861219d1319cdea45c4ce4d30355a47176b8f98dcedf95ea8269f131b8abd", size = 828723, upload-time = "2026-04-22T19:14:25.452Z" },
+]
+
+[[package]]
+name = "polars-hash"
+version = "0.6.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "polars" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/3d/35/00b8aa6d5e543b8e3c7e2ec0f5715cac19589bfd028b62eb68f943de6bc8/polars_hash-0.6.0.tar.gz", hash = "sha256:f2b860ddb4ebb064185a7fb082eab5f930d71467d5442e2e9040e62108b292d7", size = 29257, upload-time = "2026-05-30T21:48:58.28Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/af/6f/09673fc17f228993421d8ebd971a1ab252ed2634f60a707972028a655ec7/polars_hash-0.6.0-cp38-abi3-macosx_10_12_x86_64.whl", hash = "sha256:6c3d1f9849b56d802657c69c0861b39efc8edcc9c98bfcff76e5f90b76d107c6", size = 4253867, upload-time = "2026-05-30T21:48:43.296Z" },
+    { url = "https://files.pythonhosted.org/packages/68/37/7af1c0fb241900ca4b1ae07de491ae1d52d3dc2b003f711eb8f726097239/polars_hash-0.6.0-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:43d979a6807e3503f8c89746ffc8883ac8e49442519c78a7c28bcdbaed260283", size = 4042749, upload-time = "2026-05-30T21:48:45.077Z" },
+    { url = "https://files.pythonhosted.org/packages/05/0e/734319683a9f1edf9d8db240e2d0b854e9dabc39cd0deb89b32fe03adbd2/polars_hash-0.6.0-cp38-abi3-manylinux_2_17_aarch64.manylinux2014_aarch64.whl", hash = "sha256:8ce79656a4259341849f112bc9f71d486fac9db63b1c946ac980f6f1785186c8", size = 4870478, upload-time = "2026-05-30T21:48:47.063Z" },
+    { url = "https://files.pythonhosted.org/packages/6f/66/7712a0d7fb14aed847b5261ddd7b985d9ca742df2b499b0b30c166cf120a/polars_hash-0.6.0-cp38-abi3-manylinux_2_17_armv7l.manylinux2014_armv7l.whl", hash = "sha256:fdde9db73b10891b5adc0a5911531ce4239f7aa3ee52d7470389f51028d5cafe", size = 4988194, upload-time = "2026-05-30T21:48:48.708Z" },
+    { url = "https://files.pythonhosted.org/packages/3f/65/2690839d86536002a7d9346e5a654a777accb5e66e2e8d68de6591df76f3/polars_hash-0.6.0-cp38-abi3-manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:809a4bbd2c57dd67abe9e454e494cc0f2a5b4708adc8f99dd9c21c0db7edaef8", size = 5573808, upload-time = "2026-05-30T21:48:50.187Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/b6/d1e5e5cae6bd8aeff3bc9b4470bed75d1820a7752b53c5d9deb34eb48563/polars_hash-0.6.0-cp38-abi3-manylinux_2_17_ppc64le.manylinux2014_ppc64le.whl", hash = "sha256:7e506ced3c923444528ea45258347ffe5ddcdafe103a21e3df87871a3897b412", size = 5645865, upload-time = "2026-05-30T21:48:51.751Z" },
+    { url = "https://files.pythonhosted.org/packages/bd/e6/c4e7954327bec95c79358f2204ef93a6f25fd7a84544ee9c18edfccf55df/polars_hash-0.6.0-cp38-abi3-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d1e4d19a58dd265192f3b2aee7dd34354dcae420f20d6a01111ebe21efd87ee3", size = 4907715, upload-time = "2026-05-30T21:48:53.282Z" },
+    { url = "https://files.pythonhosted.org/packages/16/e2/d224690e4fc907c939c765f3993bc69eaef2146250b60eae9b7b5635cbb4/polars_hash-0.6.0-cp38-abi3-win32.whl", hash = "sha256:2758ac0f1ded1b22c6c4f997de4e24c893adf009b8f72b291f017a6dbc12ddb9", size = 3669838, upload-time = "2026-05-30T21:48:54.635Z" },
+    { url = "https://files.pythonhosted.org/packages/b4/3a/691262209166ab2fab0c5b237caace40574b88087f010d4c7ea12c97df8a/polars_hash-0.6.0-cp38-abi3-win_amd64.whl", hash = "sha256:15896e8e0c3843e8fc90e51f40aae7c6feb5187c107ad8ff332dcfd7cdf5f8a7", size = 4228368, upload-time = "2026-05-30T21:48:56.859Z" },
 ]
 
 [[package]]

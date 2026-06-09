@@ -22,3 +22,8 @@ data/*
 Bitacora_avance.txt
 schema_audit.md
 .tmp
+
+# artifacts de testing de pipeline
+run_a.json
+run_b.json
+*.snapshot.json
