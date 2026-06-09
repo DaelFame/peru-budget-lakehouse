@@ -141,21 +141,8 @@ def _inject_theme_css(colors: dict) -> None:
         <style>
         @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&display=swap');
 
-        html, body, [class*="css"] {{
+        html, body, [class*="css"], h1, h2, h3 {{
             font-family: {FONT_FAMILY};
-        }}
-
-        .main-title {{
-            font-size: 2.8rem;
-            font-weight: 700;
-            margin-bottom: 0.2rem;
-            letter-spacing: -0.02em;
-        }}
-
-        .subtitle {{
-            font-size: 1.2rem;
-            font-weight: 400;
-            margin-bottom: 1.5rem;
         }}
 
         [data-testid="metric-container"] {{
@@ -178,18 +165,6 @@ def _inject_theme_css(colors: dict) -> None:
             font-size: 2.4rem !important;
             font-weight: 700;
             color: {colors['card_value']};
-        }}
-
-        .section-title {{
-            font-size: 1.6rem;
-            font-weight: 600;
-            margin-top: 1rem;
-            margin-bottom: 1rem;
-        }}
-
-        .section-desc {{
-            font-size: 0.9rem;
-            margin-bottom: 1rem;
         }}
         </style>
     """, unsafe_allow_html=True)
@@ -284,9 +259,6 @@ def main():
     colors = DARK_COLORS if st.session_state.dark_mode else LIGHT_COLORS
     st.session_state["ui_colors"] = colors
     _inject_theme_css(colors)
-
-    st.write(f"**DEBUG** — dark_mode: `{st.session_state.dark_mode}`")
-    st.write(f"**DEBUG** — title color: `{colors['secondary']}` — subtitle color: `{colors['subtitle']}`")
 
     # Load and initialize control panel filters from the DuckDB gold layers
     try:
@@ -533,8 +505,8 @@ def main():
     # ----------------------------------------------------
     # HEADER LAYOUT
     # ----------------------------------------------------
-    st.markdown(f'<div class="main-title" style="color: {colors["secondary"]}">{LANG["main_title"]}</div>', unsafe_allow_html=True)
-    st.markdown(f'<div class="subtitle" style="color: {colors["subtitle"]}">{LANG["subtitle"]}</div>', unsafe_allow_html=True)
+    st.title(LANG["main_title"])
+    st.caption(LANG["subtitle"])
     st.markdown("---")
 
     # ----------------------------------------------------
@@ -556,20 +528,15 @@ def main():
     # ----------------------------------------------------
     # LAYER 1: EXECUTIVE OVERVIEW (KPI CARDS)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_kpis"]}</div>', unsafe_allow_html=True)
+    st.subheader(LANG["sec_kpis"])
     render_kpi_cards(metrics, LANG)
     st.markdown("---")
 
     # ----------------------------------------------------
     # LAYER 2: ECONOMIC COMPOSITION (FULL WIDTH)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_economic"]}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-        f"{LANG['sub_economic']}"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+    st.subheader(LANG["sec_economic"])
+    st.markdown(LANG['sub_economic'])
 
     with st.spinner(LANG["spinner_econ"]):
         df_econ = cached_economic_composition(
@@ -592,13 +559,8 @@ def main():
     chart_col1, chart_col2 = st.columns(2)
 
     with chart_col1:
-        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_concentrations"]}</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-            f"{LANG['sub_concentrations']}"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+        st.subheader(LANG["sec_concentrations"])
+        st.markdown(LANG['sub_concentrations'])
 
         # Interactive Dimension Toggle
         conc_toggle = st.selectbox(
@@ -625,13 +587,8 @@ def main():
             st.info(LANG["no_conc_data"])
 
     with chart_col2:
-        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_variance"]}</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-            f"{LANG['sub_variance']}"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+        st.subheader(LANG["sec_variance"])
+        st.markdown(LANG['sub_variance'])
 
         # Interactive Dimension Toggle (defaulting to Department for comparative variety)
         var_toggle = st.selectbox(
@@ -665,13 +622,8 @@ def main():
     fin_col1, fin_col2 = st.columns(2)
 
     with fin_col1:
-        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_financing"]}</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-            f"{LANG['sub_financing']}"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+        st.subheader(LANG["sec_financing"])
+        st.markdown(LANG['sub_financing'])
 
         with st.spinner(LANG["spinner_fin"]):
             df_fin = cached_financing_structure(
@@ -687,13 +639,8 @@ def main():
             st.info(LANG["no_financing_data"])
 
     with fin_col2:
-        st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_programmatic"]}</div>', unsafe_allow_html=True)
-        st.markdown(
-            f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-            f"{LANG['sub_programmatic']}"
-            f"</div>",
-            unsafe_allow_html=True
-        )
+        st.subheader(LANG["sec_programmatic"])
+        st.markdown(LANG['sub_programmatic'])
 
         prog_toggle = st.selectbox(
             LANG["toggle_prog"],
@@ -727,13 +674,8 @@ def main():
     # ----------------------------------------------------
     # LAYER 5: GEOGRAPHIC ACCOUNTABILITY MATRIX (HEATMAP)
     # ----------------------------------------------------
-    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_heatmap"]}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-        f"{LANG['sub_heatmap']}"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+    st.subheader(LANG["sec_heatmap"])
+    st.markdown(LANG['sub_heatmap'])
 
     with st.spinner(LANG["spinner_geo"]):
         df_geo = cached_geographic_heatmap(
@@ -752,13 +694,8 @@ def main():
     # LAYER 6: AI-POWERED CONVERSATIONAL BUDGET ANALYST
     # ----------------------------------------------------
     st.markdown("---")
-    st.markdown(f'<div class="section-title" style="color: {colors["secondary"]}">{LANG["sec_ai_chat"]}</div>', unsafe_allow_html=True)
-    st.markdown(
-        f"<div class='section-desc' style='color: {colors['subtitle']}'>"
-        f"{LANG['sub_ai_chat']}"
-        f"</div>",
-        unsafe_allow_html=True
-    )
+    st.subheader(LANG["sec_ai_chat"])
+    st.markdown(LANG['sub_ai_chat'])
 
     api_key = os.environ.get("GROQ_API_KEY")
     if not api_key:
