@@ -27,3 +27,7 @@ schema_audit.md
 run_a.json
 run_b.json
 *.snapshot.json
+
+# local agent tooling and work logs
+.atl/
+odd/
