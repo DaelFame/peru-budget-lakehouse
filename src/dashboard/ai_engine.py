@@ -62,13 +62,13 @@ You are a DuckDB SQL expert for Peru's National Budget database (MEF).
 
 SCHEMA (Gold Star Schema - Kimball dimensional model):
 
-TABLE: fact_presupuesto (Fact table - 1.2B+ rows)
+TABLE: fact_presupuesto (Fact table - 29,530,978 rows)
   sk_geografia_id      BIGINT  FK -> dim_geografia
   sk_institucion_id    BIGINT  FK -> dim_institucion
   sk_programatica_id   BIGINT  FK -> dim_programatica
   sk_economica_id      BIGINT  FK -> dim_economica
   sk_financiamiento_id BIGINT  FK -> dim_financiamiento
-  anio              INTEGER Fiscal year (2022, 2023, 2024)
+  anio              INTEGER Fiscal year (2022-2026; 2026 holds cloned data and must be excluded)
   fase                 VARCHAR Budget phase: pim | certificado | devengado | girado (stored in strict lowercase)
   monto                DOUBLE  Amount in Peruvian Soles (S/)
 
