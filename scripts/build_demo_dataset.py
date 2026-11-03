@@ -1,173 +1,57 @@
 """
 build_demo_dataset.py
 
-Production-grade demo dataset builder for the Peru Budget Lakehouse.
-Generates a ~450K row stratified sample of fact_presupuesto (years 2022-2025)
-with strict validation gates, MD5 reproducibility signature, and schema preservation.
+Builds the demo Gold layer used by the Streamlit dashboard from a full Gold
+star schema.
+
+The sampling unit is the ENTITY - the five surrogate keys that identify one
+source row - never the individual fact row. Every fact belonging to a sampled
+entity is kept, across years and execution phases.
+
+Row-level sampling destroys the internal consistency of each record: a `pim`
+fact can survive while its `devengado` sibling does not. The aggregate then
+reports impossible execution rates (devengado > PIM) and meaningless
+per-entity ratios. Entity-level sampling keeps every record intact, so the
+demo is a valid - if partial - view of the same accounting ledger.
 
 Usage:
-    python scripts/build_demo_dataset.py
+    uv run python scripts/build_demo_dataset.py
+    uv run python scripts/build_demo_dataset.py --target-rows 450000 \
+        --years 2022 2023 2024 2025 --max-region-share 50
 
-Output:
-    data/00_demo/fact_presupuesto_demo.parquet
+Outputs:
+    data/00_demo/fact_presupuesto.parquet
+    data/00_demo/dim_*.parquet
+    data/00_demo/manifest.json
+
+Exit code 1 when an acceptance gate fails.
 """
 
-import hashlib
+from __future__ import annotations
+
+import argparse
+import json
+import sys
+from datetime import datetime, timezone
+from pathlib import Path
 
 import duckdb
 import pandas as pd
-from pathlib import Path
 
-# ---------------------------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------------------------
-FACT_PATH = Path("data/03_gold/fact_presupuesto.parquet")
-OUTPUT_PATH = Path("data/00_demo/fact_presupuesto.parquet")
-TARGET_TOTAL_ROWS = 450_000
-RANDOM_STATE = 42
-YEARS = [2022, 2023, 2024, 2025]
+GOLD_DIR = Path("data/03_gold")
+DEMO_DIR = Path("data/00_demo")
 
-REQUIRED_COLUMNS = [
+ENTITY_KEYS = [
     "sk_geografia_id",
     "sk_institucion_id",
     "sk_programatica_id",
     "sk_economica_id",
     "sk_financiamiento_id",
-    "anio",
-    "fase",
-    "monto",
 ]
 
-# ---------------------------------------------------------------------------
-# 1. LOAD
-# ---------------------------------------------------------------------------
-con = duckdb.connect()
-df = con.execute(f"""
-    SELECT *
-    FROM read_parquet('{FACT_PATH}')
-    WHERE anio IN ({','.join(map(str, YEARS))})
-""").df()
+FACT_COLUMNS = ENTITY_KEYS + ["anio", "fase", "monto"]
 
-total_before = len(df)
-print(f"Gold dataset (2022–2025): {total_before:,} rows")
-
-# ---------------------------------------------------------------------------
-# 2. COMPUTE YEAR PROPORTIONS FROM FULL DATASET
-# ---------------------------------------------------------------------------
-year_counts = df["anio"].value_counts().sort_index()
-total_count = year_counts.sum()
-
-# ---------------------------------------------------------------------------
-# 3. STRATIFIED SAMPLING (exact row count enforcement)
-# ---------------------------------------------------------------------------
-allocations = {}
-remaining = TARGET_TOTAL_ROWS
-
-for year in YEARS[:-1]:
-    count = year_counts[year]
-    proportion = count / total_count
-    n = min(int(TARGET_TOTAL_ROWS * proportion), count)
-    allocations[year] = n
-    remaining -= n
-
-# Last year gets whatever remains (ensures exact TARGET_TOTAL_ROWS)
-allocations[YEARS[-1]] = min(remaining, year_counts[YEARS[-1]])
-remaining_after = TARGET_TOTAL_ROWS - sum(allocations.values())
-
-# Distribute any remaining slack to years with capacity
-if remaining_after > 0:
-    for year in YEARS:
-        if remaining_after <= 0:
-            break
-        cap = year_counts[year] - allocations[year]
-        add = min(remaining_after, cap)
-        allocations[year] += add
-        remaining_after -= add
-
-# Safety: clamp any overflow back to zero
-if remaining_after != 0:
-    import sys
-    print(f"WARNING: Could not allocate {remaining_after} rows exactly", file=sys.stderr)
-
-parts = []
-for year in YEARS:
-    n = allocations[year]
-    df_year = df[df["anio"] == year]
-    df_sample = df_year.sample(n=n, random_state=RANDOM_STATE)
-    parts.append(df_sample)
-
-# ---------------------------------------------------------------------------
-# 4. CONCATENATE + SHUFFLE
-# ---------------------------------------------------------------------------
-df_demo = pd.concat(parts, ignore_index=True)
-df_demo = df_demo.sample(frac=1, random_state=RANDOM_STATE).reset_index(drop=True)
-
-# ---------------------------------------------------------------------------
-# 5. STRICT VALIDATION GATE
-# ---------------------------------------------------------------------------
-actual_rows = len(df_demo)
-assert actual_rows == TARGET_TOTAL_ROWS, (
-    f"Row count mismatch: expected {TARGET_TOTAL_ROWS}, got {actual_rows}"
-)
-
-nulls = {col: int(df_demo[col].isnull().sum()) for col in REQUIRED_COLUMNS}
-for col, count in nulls.items():
-    assert count == 0, f"Column '{col}' has {count} null values"
-
-demo_year_counts = df_demo["anio"].value_counts().sort_index()
-for year in YEARS:
-    assert year in demo_year_counts.index, f"Year {year} is missing from demo dataset"
-    assert demo_year_counts[year] > 0, f"Year {year} has 0 rows"
-
-assert not df_demo.empty, "Dataset is empty"
-
-# ---------------------------------------------------------------------------
-# 6. COMPUTE SIGNATURE
-# ---------------------------------------------------------------------------
-signature_content = f"{len(df_demo)}-{df_demo['anio'].value_counts().sort_index().to_dict()}"
-signature = hashlib.md5(signature_content.encode()).hexdigest()
-
-# ---------------------------------------------------------------------------
-# 7. EXPORT
-# ---------------------------------------------------------------------------
-OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-df_demo.to_parquet(OUTPUT_PATH, index=False)
-
-# ---------------------------------------------------------------------------
-# 8. REPORT
-# ---------------------------------------------------------------------------
-monto_min = df_demo["monto"].min()
-monto_max = df_demo["monto"].max()
-
-year_distribution = demo_year_counts.to_dict()
-year_total = sum(year_distribution.values())
-
-print()
-print("=== DATASET VALIDATION ===")
-print(f"Rows: {actual_rows}")
-print(f"Signature: {signature}")
-print()
-print("Year distribution:")
-for y in YEARS:
-    cnt = year_distribution.get(y, 0)
-    pct = cnt / year_total * 100 if year_total else 0
-    print(f"  {y}: {cnt:,} ({pct:.1f}%)")
-print()
-print("Null check:")
-for col in REQUIRED_COLUMNS:
-    print(f"  {col}: {nulls[col]}")
-print()
-print("monto range:")
-print(f"  min: {monto_min}")
-print(f"  max: {monto_max}")
-print()
-print(f"Saved to {OUTPUT_PATH}")
-
-# ---------------------------------------------------------------------------
-# 9. DEMO DIMENSIONS MIGRATION (MINI STAR SCHEMA)
-# ---------------------------------------------------------------------------
-
-DIM_TABLES = {
+DIMENSIONS = {
     "dim_geografia": "sk_geografia_id",
     "dim_institucion": "sk_institucion_id",
     "dim_programatica": "sk_programatica_id",
@@ -175,33 +59,267 @@ DIM_TABLES = {
     "dim_financiamiento": "sk_financiamiento_id",
 }
 
-DIM_PATH_GOLD = Path("data/03_gold")
-DIM_PATH_DEMO = Path("data/00_demo")
-
-def build_demo_dimension(table_name, key_col):
-    gold_path = DIM_PATH_GOLD / f"{table_name}.parquet"
-    demo_path = DIM_PATH_DEMO / f"{table_name}.parquet"
-
-    if not gold_path.exists():
-        print(f"[WARN] Missing gold dimension: {table_name}")
-        return
-
-    print(f"Processing {table_name}...")
-
-    dim = pd.read_parquet(gold_path)
-
-    # Keep only keys that exist in fact demo (minimizes size + ensures consistency)
-    valid_keys = set(df_demo[key_col].unique())
-    dim_demo = dim[dim[key_col].isin(valid_keys)].copy()
-
-    # Safety: remove duplicates if any
-    dim_demo = dim_demo.drop_duplicates(subset=[key_col])
-
-    demo_path.parent.mkdir(parents=True, exist_ok=True)
-    dim_demo.to_parquet(demo_path, index=False)
-
-    print(f"{table_name}: {len(dim):,} → {len(dim_demo):,} rows")
+DEFAULT_YEARS = [2022, 2023, 2024, 2025]
 
 
-for table, key in DIM_TABLES.items():
-    build_demo_dimension(table, key)
+# ---------------------------------------------------------------------------
+# Selection
+# ---------------------------------------------------------------------------
+def select_entities(entity_sizes: pd.DataFrame, target_rows: int) -> pd.DataFrame:
+    """
+    Greedy deterministic selection of whole entities until `target_rows` is met.
+
+    `entity_sizes` must carry ENTITY_KEYS plus `n_facts`, sorted by a stable
+    key. An entity is either taken with all its facts or not taken at all: the
+    function never splits a record. Small entities fill the remainder left by
+    large ones, so the result usually hits the target exactly.
+    """
+    selected = []
+    total = 0
+
+    for row in entity_sizes.itertuples(index=False):
+        if total == target_rows:
+            break
+        if total + row.n_facts <= target_rows:
+            selected.append(row)
+            total += row.n_facts
+
+    chosen = pd.DataFrame(selected, columns=list(entity_sizes.columns))
+    return chosen
+
+
+# ---------------------------------------------------------------------------
+# Gates
+# ---------------------------------------------------------------------------
+def execution_rates(facts: pd.DataFrame) -> dict:
+    """PIM vs devengado execution rate, globally and per fiscal year."""
+    pim = facts[facts["fase"] == "pim"]
+    dev = facts[facts["fase"] == "devengado"]
+
+    def rate(pim_value: float, dev_value: float) -> float | None:
+        if pim_value == 0:
+            return None
+        return round(100.0 * dev_value / pim_value, 2)
+
+    global_rate = rate(pim["monto"].sum(), dev["monto"].sum())
+
+    per_year = []
+    for year in sorted(facts["anio"].unique()):
+        pim_year = pim[pim["anio"] == year]["monto"].sum()
+        dev_year = dev[dev["anio"] == year]["monto"].sum()
+        per_year.append(
+            {
+                "anio": int(year),
+                "execution_rate_pct": rate(pim_year, dev_year),
+                "pim": round(float(pim_year), 2),
+                "devengado": round(float(dev_year), 2),
+            }
+        )
+
+    return {"global_execution_rate_pct": global_rate, "by_year": per_year}
+
+
+def region_pim_shares(facts: pd.DataFrame, geography: pd.DataFrame) -> list[dict]:
+    """Share of total PIM held by each executing-unit department."""
+    merged = facts[facts["fase"] == "pim"].merge(geography, on="sk_geografia_id", how="left")
+    merged = merged[merged["departamento_ejecutora_nombre"].notna()]
+
+    total = merged["monto"].sum()
+    if total == 0:
+        return []
+
+    grouped = (
+        merged.groupby("departamento_ejecutora_nombre")["monto"]
+        .sum()
+        .sort_values(ascending=False)
+    )
+    return [
+        {"department": name, "pim": round(float(value), 2), "share_pct": round(100.0 * value / total, 2)}
+        for name, value in grouped.items()
+    ]
+
+
+def check_gates(
+    facts: pd.DataFrame,
+    geography: pd.DataFrame,
+    target_rows: int,
+    max_region_share: float,
+    row_tolerance: float,
+) -> tuple[list[str], dict]:
+    """
+    Evaluate every acceptance gate.
+
+    Returns (failures, diagnostics). An empty failure list means the demo pass-
+    es. Execution rates outside [0, 100] mean a record lost its PIM/devengado
+    sibling, which is exactly what entity-level sampling must prevent.
+    """
+    failures: list[str] = []
+    rates = execution_rates(facts)
+
+    for entry in [{"anio": "global", "execution_rate_pct": rates["global_execution_rate_pct"]}] + rates["by_year"]:
+        value = entry["execution_rate_pct"]
+        if value is None:
+            failures.append(f"Execution rate undefined for {entry['anio']}: no PIM in the sample.")
+        elif not 0.0 <= value <= 100.0:
+            failures.append(
+                f"Execution rate {value}% for {entry['anio']} is outside [0, 100]: "
+                "devengado and PIM rows of the same entity were split."
+            )
+
+    rows = len(facts)
+    if abs(rows - target_rows) > max(1, int(target_rows * row_tolerance)):
+        failures.append(
+            f"Demo holds {rows:,} rows against a target of {target_rows:,} "
+            f"(tolerance {row_tolerance:.1%})."
+        )
+
+    for column in FACT_COLUMNS:
+        nulls = int(facts[column].isna().sum())
+        if nulls:
+            failures.append(f"Column '{column}' has {nulls:,} null values.")
+
+    shares = region_pim_shares(facts, geography)
+    if shares and shares[0]["share_pct"] > max_region_share:
+        failures.append(
+            f"{shares[0]['department']} holds {shares[0]['share_pct']}% of PIM "
+            f"(limit {max_region_share}%). This reflects the dataset, not the sample: "
+            "national ministries execute in Lima. Re-run with --max-region-share to accept it."
+        )
+
+    diagnostics = {
+        "execution_rates": rates,
+        "top_region_pim_share": shares[:5],
+    }
+    return failures, diagnostics
+
+
+# ---------------------------------------------------------------------------
+# Build
+# ---------------------------------------------------------------------------
+def _entity_sizes(con: duckdb.DuckDBPyConnection, years: list[int]) -> pd.DataFrame:
+    year_list = ",".join(str(y) for y in years)
+    keys = ", ".join(ENTITY_KEYS)
+    query = f"""
+        SELECT {keys}, COUNT(*) AS n_facts
+        FROM read_parquet('{GOLD_DIR / "fact_presupuesto.parquet"}')
+        WHERE anio IN ({year_list})
+        GROUP BY {keys}
+        ORDER BY md5(concat_ws('|', {', '.join(f'CAST({k} AS VARCHAR)' for k in ENTITY_KEYS)}))
+    """
+    return con.execute(query).df()
+
+
+def build(target_rows: int, years: list[int]) -> tuple[pd.DataFrame, dict, pd.DataFrame]:
+    con = duckdb.connect()
+    fact_path = GOLD_DIR / "fact_presupuesto.parquet"
+    if not fact_path.exists():
+        raise FileNotFoundError(
+            f"Gold fact table not found: {fact_path}. Run the pipeline first (uv run python main.py)."
+        )
+
+    print(f"Gold fact table: {fact_path}")
+    sizes = _entity_sizes(con, years)
+    print(f"Entities available ({years[0]}-{years[-1]}): {len(sizes):,}")
+
+    chosen = select_entities(sizes, target_rows)
+    print(f"Entities selected: {len(chosen):,}")
+
+    year_list = ",".join(str(y) for y in years)
+    con.register("selected_entities", chosen[ENTITY_KEYS])
+
+    fact = con.execute(
+        f"SELECT {', '.join('f.' + c for c in FACT_COLUMNS)} "
+        f"FROM read_parquet('{fact_path}') f "
+        f"WHERE f.anio IN ({year_list}) "
+        f"  AND EXISTS (SELECT 1 FROM selected_entities s WHERE "
+        + " AND ".join(f"s.{k} = f.{k}" for k in ENTITY_KEYS)
+        + ")"
+    ).df()
+    print(f"Facts sampled: {len(fact):,}")
+
+    # Integrity invariant: every selected entity keeps all of its facts.
+    observed = fact.groupby(ENTITY_KEYS, sort=False)["monto"].size().rename("observed")
+    expected = chosen.set_index(ENTITY_KEYS)["n_facts"]
+    mismatch = (observed.reindex(expected.index) != expected).sum()
+    if mismatch:
+        raise RuntimeError(
+            f"{mismatch:,} entities lost facts during sampling. Entity-level sampling is broken."
+        )
+
+    dims = {}
+    for table, key in DIMENSIONS.items():
+        source = GOLD_DIR / f"{table}.parquet"
+        if not source.exists():
+            raise FileNotFoundError(f"Gold dimension not found: {source}")
+        dims[table] = con.execute(
+            f"SELECT d.* FROM read_parquet('{source}') d "
+            f"JOIN (SELECT DISTINCT {key} FROM selected_entities) s USING ({key})"
+        ).df()
+        print(f"{table}: {len(dims[table]):,} rows")
+
+    con.close()
+    return fact, dims, chosen
+
+
+def write(fact: pd.DataFrame, dims: dict, manifest: dict) -> None:
+    DEMO_DIR.mkdir(parents=True, exist_ok=True)
+    fact.to_parquet(DEMO_DIR / "fact_presupuesto.parquet", index=False)
+    for table, frame in dims.items():
+        frame.to_parquet(DEMO_DIR / f"{table}.parquet", index=False)
+    (DEMO_DIR / "manifest.json").write_text(json.dumps(manifest, indent=2), encoding="utf-8")
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description="Build the demo Gold layer.")
+    parser.add_argument("--target-rows", type=int, default=450_000)
+    parser.add_argument("--years", type=int, nargs="+", default=DEFAULT_YEARS)
+    parser.add_argument("--max-region-share", type=float, default=50.0)
+    parser.add_argument("--row-tolerance", type=float, default=0.001)
+    parser.add_argument("--skip-gates", action="store_true", help="Write the demo even if a gate fails.")
+    args = parser.parse_args()
+
+    fact, dims, chosen = build(args.target_rows, args.years)
+    failures, diagnostics = check_gates(
+        fact,
+        dims["dim_geografia"],
+        target_rows=args.target_rows,
+        max_region_share=args.max_region_share,
+        row_tolerance=args.row_tolerance,
+    )
+
+    manifest = {
+        "generated_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        "target_rows": args.target_rows,
+        "fact_rows": len(fact),
+        "entities": int(len(chosen)),
+        "years": args.years,
+        "dimension_rows": {table: len(frame) for table, frame in dims.items()},
+        "gates": {"passed": not failures, "failures": failures},
+        "diagnostics": diagnostics,
+    }
+
+    print("\n=== VALIDATION ===")
+    print(f"Fact rows        : {len(fact):,}")
+    print(f"Entities         : {manifest['entities']:,}")
+    print(f"Execution (all)  : {diagnostics['execution_rates']['global_execution_rate_pct']}%")
+    for entry in diagnostics["execution_rates"]["by_year"]:
+        print(f"  {entry['anio']}: PIM {entry['pim'] / 1e9:,.2f}bn  devengado {entry['devengado'] / 1e9:,.2f}bn  "
+              f"-> {entry['execution_rate_pct']}%")
+    for entry in diagnostics["top_region_pim_share"]:
+        print(f"  PIM {entry['department']}: {entry['share_pct']}%")
+
+    if failures:
+        print("\nGATES FAILED:")
+        for failure in failures:
+            print(f"  - {failure}")
+        if not args.skip_gates:
+            print("\nNo files written. Fix the sample or re-run with --skip-gates.")
+            return 1
+
+    write(fact, dims, manifest)
+    print(f"\nDemo written to {DEMO_DIR}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())
