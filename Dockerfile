@@ -34,6 +34,10 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 COPY app.py main.py ./
 COPY src/ ./src/
 
+# 9. Ship the demo Gold layer so the dashboard runs with no external volume.
+#    The full pipeline writes to /app/data at runtime; a mounted volume supersedes this.
+COPY data/00_demo/ ./data/00_demo/
+
 # 9. Expose the Streamlit default port for the analytical dashboard
 EXPOSE 8501
 
