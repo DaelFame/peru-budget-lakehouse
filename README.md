@@ -276,4 +276,4 @@ peru-budget-lakehouse/
 
 ---
 
-[LinkedIn](https://www.linkedin.com/in/joaquin-cardenas-956a0a218) · [GitHub](https://github.com/DaelFame)
+[LinkedIn](https://www.linkedin.com/in/joaquincardenas-data) · [GitHub](https://github.com/DaelFame)
