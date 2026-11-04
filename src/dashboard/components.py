@@ -437,6 +437,7 @@ def render_geographic_heatmap(df: pd.DataFrame, demo_mode: bool = False) -> None
     # Place years at the top for clean, matrix-style visual reports
     fig.update_layout(
         xaxis=dict(
+            type="category",
             showgrid=False,
             showline=False,
             side="top",
@@ -640,6 +641,7 @@ def render_programmatic_allocation(df: pd.DataFrame, lang_dict: dict = None) -> 
         yaxis=dict(
             showgrid=False,
             showline=False,
+            automargin=True,
             tickfont=dict(size=12, color=_get_colors().get("secondary", "#1E293B")),
         ),
         plot_bgcolor="rgba(0,0,0,0)",
