@@ -82,7 +82,7 @@ def _run_script(script_name: str, logger) -> dict:
 # ---------------------------------------------------------------------------
 @task(name="bronze-ingestion", retries=1, retry_delay_seconds=10)
 def bronze() -> dict:
-    """Ingest raw MEF CSV → Bronze Parquet (ZSTD). ~54M rows source."""
+    """Ingest raw MEF CSV → Bronze Parquet (ZSTD). 8,002,563 source rows."""
     return _run_script(SCRIPTS["bronze"], get_run_logger())
 
 

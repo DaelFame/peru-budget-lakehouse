@@ -2,7 +2,7 @@
 Executive Dashboard Database Module (Star Schema Optimized)
 Handles all high-performance data extraction from the Gold Star Schema layers
 using DuckDB with conditional JOINs — only joins dimension tables when the
-active filter actually requires it, keeping scans minimal on 54M+ row fact tables.
+active filter actually requires it, keeping scans minimal on the 29.5M-row fact table.
 """
 import logging
 from typing import Dict, List, Tuple, Any
