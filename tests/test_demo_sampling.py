@@ -105,7 +105,7 @@ def test_gate_rejects_execution_rate_above_100():
     geography = make_geography([(1, "lima")])
 
     failures, _ = check_gates(
-        facts, geography, target_rows=len(facts), max_region_share=100.0, row_tolerance=0.001
+        facts, geography, target_rows=len(facts), region_share_threshold=100.0, row_tolerance=0.001
     )
 
     assert any("outside [0, 100]" in failure for failure in failures)
@@ -116,7 +116,7 @@ def test_gate_accepts_consistent_sample():
     geography = make_geography([(1, "lima")])
 
     failures, _ = check_gates(
-        facts, geography, target_rows=len(facts), max_region_share=100.0, row_tolerance=0.001
+        facts, geography, target_rows=len(facts), region_share_threshold=100.0, row_tolerance=0.001
     )
 
     assert failures == []
@@ -128,26 +128,39 @@ def test_gate_flags_null_amounts():
     geography = make_geography([(1, "lima")])
 
     failures, _ = check_gates(
-        facts, geography, target_rows=len(facts), max_region_share=100.0, row_tolerance=0.001
+        facts, geography, target_rows=len(facts), region_share_threshold=100.0, row_tolerance=0.001
     )
 
     assert any("null values" in failure for failure in failures)
 
 
 # ---------------------------------------------------------------------------
-# Geographic concentration
+# Geographic concentration is reported, never enforced
 # ---------------------------------------------------------------------------
-def test_region_share_gate_rejects_concentration():
+def test_region_concentration_is_reported_not_enforced():
     facts = make_facts([(2024, "pim", 100.0), (2024, "devengado", 80.0)])
     facts.loc[1, "sk_geografia_id"] = 2
     geography = make_geography([(1, "lima"), (2, "cusco")])
 
     failures, diagnostics = check_gates(
-        facts, geography, target_rows=len(facts), max_region_share=50.0, row_tolerance=0.001
+        facts, geography, target_rows=len(facts), region_share_threshold=50.0, row_tolerance=0.001
     )
 
-    assert diagnostics["top_region_pim_share"][0]["department"] == "lima"
-    assert any("holds 100.0% of PIM" in failure for failure in failures)
+    top = diagnostics["top_region_pim_share"][0]
+    assert top["department"] == "lima"
+    assert "holds 100.0% of PIM" in diagnostics["region_concentration_note"]
+    assert failures == []
+
+
+def test_region_note_absent_below_threshold():
+    facts = make_facts([(2024, "pim", 100.0), (2024, "devengado", 80.0)])
+    geography = make_geography([(1, "lima")])
+
+    _, diagnostics = check_gates(
+        facts, geography, target_rows=len(facts), region_share_threshold=100.0, row_tolerance=0.001
+    )
+
+    assert diagnostics["region_concentration_note"] is None
 
 
 def test_region_shares_exclude_rows_without_geography():
@@ -165,7 +178,7 @@ def test_row_target_gate_rejects_off_target_count():
     geography = make_geography([(1, "lima")])
 
     failures, _ = check_gates(
-        facts, geography, target_rows=1000, max_region_share=100.0, row_tolerance=0.001
+        facts, geography, target_rows=1000, region_share_threshold=100.0, row_tolerance=0.001
     )
 
     assert any("against a target of" in failure for failure in failures)
@@ -177,7 +190,7 @@ def test_execution_rate_bounds_are_inclusive(rate):
     geography = make_geography([(1, "lima")])
 
     failures, _ = check_gates(
-        facts, geography, target_rows=len(facts), max_region_share=100.0, row_tolerance=0.001
+        facts, geography, target_rows=len(facts), region_share_threshold=100.0, row_tolerance=0.001
     )
 
     assert failures == []

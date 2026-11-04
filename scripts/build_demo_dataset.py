@@ -17,7 +17,7 @@ demo is a valid - if partial - view of the same accounting ledger.
 Usage:
     uv run python scripts/build_demo_dataset.py
     uv run python scripts/build_demo_dataset.py --target-rows 450000 \
-        --years 2022 2023 2024 2025 --max-region-share 50
+        --years 2022 2023 2024 2025 --region-share-threshold 50
 
 Outputs:
     data/00_demo/fact_presupuesto.parquet
@@ -143,15 +143,20 @@ def check_gates(
     facts: pd.DataFrame,
     geography: pd.DataFrame,
     target_rows: int,
-    max_region_share: float,
+    region_share_threshold: float,
     row_tolerance: float,
 ) -> tuple[list[str], dict]:
     """
     Evaluate every acceptance gate.
 
-    Returns (failures, diagnostics). An empty failure list means the demo pass-
-    es. Execution rates outside [0, 100] mean a record lost its PIM/devengado
-    sibling, which is exactly what entity-level sampling must prevent.
+    Returns (failures, diagnostics). An empty failure list means the demo
+    passes. The only hard integrity criterion is the execution rate: a value
+    outside [0, 100] means a record lost its PIM/devengado sibling, which is
+    exactly what entity-level sampling exists to prevent.
+
+    Geographic concentration is reported, never enforced. National ministries
+    execute in Lima, so PIM concentrates there in the real dataset; that is a
+    property of the data, not a defect of the sample.
     """
     failures: list[str] = []
     rates = execution_rates(facts)
@@ -179,16 +184,17 @@ def check_gates(
             failures.append(f"Column '{column}' has {nulls:,} null values.")
 
     shares = region_pim_shares(facts, geography)
-    if shares and shares[0]["share_pct"] > max_region_share:
-        failures.append(
+    concentration_note = None
+    if shares and shares[0]["share_pct"] > region_share_threshold:
+        concentration_note = (
             f"{shares[0]['department']} holds {shares[0]['share_pct']}% of PIM "
-            f"(limit {max_region_share}%). This reflects the dataset, not the sample: "
-            "national ministries execute in Lima. Re-run with --max-region-share to accept it."
+            f"(reported, not enforced: national ministries execute in Lima)."
         )
 
     diagnostics = {
         "execution_rates": rates,
         "top_region_pim_share": shares[:5],
+        "region_concentration_note": concentration_note,
     }
     return failures, diagnostics
 
@@ -273,7 +279,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Build the demo Gold layer.")
     parser.add_argument("--target-rows", type=int, default=450_000)
     parser.add_argument("--years", type=int, nargs="+", default=DEFAULT_YEARS)
-    parser.add_argument("--max-region-share", type=float, default=50.0)
+    parser.add_argument("--region-share-threshold", type=float, default=50.0)
     parser.add_argument("--row-tolerance", type=float, default=0.001)
     parser.add_argument("--skip-gates", action="store_true", help="Write the demo even if a gate fails.")
     args = parser.parse_args()
@@ -283,7 +289,7 @@ def main() -> int:
         fact,
         dims["dim_geografia"],
         target_rows=args.target_rows,
-        max_region_share=args.max_region_share,
+        region_share_threshold=args.region_share_threshold,
         row_tolerance=args.row_tolerance,
     )
 
@@ -307,6 +313,8 @@ def main() -> int:
               f"-> {entry['execution_rate_pct']}%")
     for entry in diagnostics["top_region_pim_share"]:
         print(f"  PIM {entry['department']}: {entry['share_pct']}%")
+    if diagnostics["region_concentration_note"]:
+        print(f"  NOTE: {diagnostics['region_concentration_note']}")
 
     if failures:
         print("\nGATES FAILED:")
