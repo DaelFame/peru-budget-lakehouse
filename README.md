@@ -1,187 +1,138 @@
 # Peru Budget Lakehouse
 
-**Analytics engineering pipeline that turns Peru's national budget execution file (8.0M source rows, 88 columns) into a 29.5M-row Kimball star schema, behind a conversational LLM analytics layer and a financial reconciliation gate.**
+**An analytics engineering pipeline that turns Peru's national budget execution file — 8,002,563 rows across 88 columns — into a 29,530,978-row Kimball star schema, a bilingual executive dashboard, and a conversational layer that answers budget questions in SQL.**
 
-[![CI](https://github.com/DaelFame/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)]( https://github.com/DaelFame/peru-budget-lakehouse/actions/workflows/ci.yml/badge.svg)
-[![Python](https://img.shields.io/badge/Python-3.11-blue)](https://www.python.org/)
-[![Polars](https://img.shields.io/badge/Polars-1.40-orange)](https://pola.rs/)
-[![DuckDB](https://img.shields.io/badge/DuckDB-OLAP-yellow)](https://duckdb.org/)
-[![Prefect](https://img.shields.io/badge/Prefect-3.x-purple)](https://www.prefect.io/)
-[![Docker](https://img.shields.io/badge/Docker-containerized-blue)](https://www.docker.com/)
-[![Parquet](https://img.shields.io/badge/Storage-Parquet_ZSTD-green)](https://parquet.apache.org/)
-
-## What this is
-
-A production-grade ETL pipeline that ingests Peru's national budget execution dataset, normalizes it through a three-layer medallion architecture, models it as a Kimball star schema, enforces financial reconciliation before any report is produced, and exposes the Gold layer to a conversational LLM analytics interface.
-
-The domain comes from years of auditing financial statements at KPMG — reconciling ledgers, testing controls, building Excel workbooks that collapsed under their own weight. Every manual tie-out and vlookup chain from those audits is what this pipeline automates.
-
-**The engineering problem is not throughput. It is correctness under memory constraints.**  
-8.0M source rows across 88 columns, reshaped into 29.5M financial facts. Local hardware. No cloud.
+**English** · [Español](README.es.md)
 
 ---
+
+## Dashboard Preview
+
+![Overview](./assets/dashboard-overview.png)
+
+![Budget dimensions](./assets/dashboard-analysis.png)
+
+![Spanish interface](./assets/dashboard-es.png)
+
+The live views run on the 450,000-row demo sample included in `data/00_demo/`.
+How and why the demo disables two KPIs is documented in [Known limitations](#known-limitations).
+
+---
+
+## The Business Problem
+
+Peru's Ministry of Economy and Finance publishes budget execution as one wide spreadsheet: 88 columns, one per phase per fiscal year (`pia_2022`, `pim_2022`, `devengado_2022`, … `girado_2026`). Every question a financial analyst actually needs — *which regions execute least?*, *how much of the planned budget was actually spent?*, *who funds the state?* — requires pivoting 35 financial columns into a workable shape first.
+
+That reshape is where the work disappears. Every answer gets rebuilt from scratch: a new pivot, a new vlookup chain, a new reconciliation nobody wrote down. The numbers move between copies and no one can say which file is the truth.
+
+This pipeline does the reshape once and makes one reconciled table the single source for every downstream answer — SQL reports, the dashboard, and the conversational layer.
+
+The domain is not theoretical: it comes from years of auditing financial statements, reconciling ledgers and testing controls, where a cent of unexplained difference between two reports is a finding, not a rounding error.
+
+## The Data
+
+| | |
+|---|---|
+| Source | [MEF open data — Comparación de Presupuesto y Ejecución de Gasto](https://datosabiertos.mef.gob.pe/dataset/comparacion-de-presupuesto-ejecucion-gasto) |
+| Raw file | 8,002,563 rows × 88 columns |
+| Financial columns | 35 (7 phases × 5 fiscal years) |
+| Gold fact table | **29,530,978** rows |
+| Dimension tables | 5 — geography 1,892 · institution 2,905 · programmatic 345,402 · economic 579 · financing 316 |
+| Fiscal years | 2022–2026; 2026 is cloned source data and is excluded from every query |
+| Grain | one row per institution × geography × program × economic classifier × funding source × year × phase |
+
+Every figure above is printed by an execution saved in the notebooks, not estimated. Sources are listed in [Where the numbers come from](#where-the-numbers-come-from).
 
 ## Architecture
 
 ```
-RAW CSV (8,002,563 rows × 88 columns)
+RAW CSV  (8,002,563 rows × 88 columns)
         │
         ▼
-┌─────────────────────────────┐
-│  BRONZE  — Polars streaming │
-│  CSV → Parquet ZSTD         │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  SILVER  — Normalization    │
-│  Type casting, column       │
-│  standardization            │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  SILVER  — UNPIVOT          │
-│  DuckDB vectorized UNPIVOT  │
-│  35 wide columns → long     │
-│  → 29,530,978 facts         │
-└──────────────┬──────────────┘
-               │
-               ▼
-┌─────────────────────────────┐
-│  GOLD  — Star Schema        │
-│  1 fact + 5 dimensions      │
-│  wyhash surrogate keys      │
-└──────┬──────────────────────┘
+┌──────────────────────────────────────┐
+│ BRONZE — Polars streaming            │
+│ CSV → Parquet (ZSTD), no full load   │
+└───────────────┬──────────────────────┘
+                ▼
+┌──────────────────────────────────────┐
+│ SILVER — normalization               │
+│ column names, types, case, accents   │
+└───────────────┬──────────────────────┘
+                ▼
+┌──────────────────────────────────────┐
+│ SILVER — unpivot                     │
+│ DuckDB: 35 wide columns → long       │
+│ → 29,530,978 facts (phase, year)     │
+└───────────────┬──────────────────────┘
+                ▼
+┌──────────────────────────────────────┐
+│ GOLD — Kimball star schema           │
+│ 1 fact + 5 dimensions, wyhash SKs    │
+└──────┬───────────────────────────────┘
        │
-  ┌────┴──────────────────┐
-  ▼                       ▼
-QA Gate            Streamlit Dashboard
-S/.0.00            ├── Deterministic DuckDB reports
-discrepancy        └── Conversational LLM analytics
-                       (NL → SQL → synthesis)
+  ┌────┴─────────────────────┐
+  ▼                          ▼
+QA GATE                 Streamlit dashboard
+Σ Silver = Σ Gold       deterministic DuckDB reports
+S/. 0.00 difference     conversational NL → SQL → answer
 ```
 
----
+Orchestration is a Prefect flow with explicit `wait_for=` dependencies: a stage cannot start before its predecessor finishes, regardless of scheduler configuration.
 
-## Star schema
+## Engineering Decisions
 
-```
-              dim_geografia
-             (district grain)
-                    │
-    dim_institucion ─── fact_presupuesto ─── dim_programatica
-    (executor unit)    (29,530,978 rows)     (activity grain)
-                    │               │
-              dim_economica    dim_financiamiento
-              (expenditure      (funding source)
-               classifier)
-```
+**Polars streaming instead of Pandas.**
+`scan_csv` / `sink_parquet` read and write in batches; the 88-column source is never materialized at once. The trade-off is a narrower API surface and no DataFrame conveniences — you write plans, not loops. That was acceptable because the job must run on a workstation, not a cluster.
 
-**Fact grain:** one row per `(institution × geography × program × economic classifier × funding source × year × execution phase)` — a fully exploded accounting ledger at execution-level granularity, normalized for OLAP queries.
+**DuckDB owns exactly one transformation.**
+Reshaping 35 wide columns into long format is the memory peak of the whole pipeline. DuckDB's vectorized `UNPIVOT` runs under an explicit `PRAGMA memory_limit` with spilling to a temp directory, so the operation degrades in speed instead of failing. Polars owns everything else. Two engines instead of one is the price; the failure mode is the reason.
 
----
+**`polars-hash` instead of `pl.hash()`.**
+`pl.hash()` does not guarantee identical output across Polars versions. A version bump would silently break every foreign key between fact and dimensions — joins return zero rows, with no error. wyhash keys are stable across versions and still execute inside the streaming engine, unlike `map_elements`.
 
-## Engineering decisions worth reading
+**`ignore_nulls=True` on surrogate keys — a real bug, not a precaution.**
+Municipal entities frequently have `pliego = NULL`. Without `ignore_nulls=True`, one NULL collapses the concatenated key expression to NULL, and thousands of municipalities share the same key. Silent collision, plausible-looking aggregates. The fix is at `src/etl_04_star_schema.py:111` and `:137`.
 
-### 1. Polars streaming instead of Pandas
+**Reconciliation is a gate, not a warning.**
+The pipeline sums `monto` in Silver and Gold and raises `ValueError` when `abs(Σ silver − Σ gold) > 0.01` (`src/etl_05_data_quality_audit.py:23`). No report runs until the two layers tie out. This is the control logic of an accounting system, applied to a data pipeline: there is no downstream output while the numbers disagree.
 
-`scan_parquet` + `sink_parquet` never materializes the full dataset in memory: the pipeline reads and writes in streaming batches. This is not a performance optimization — it is what makes the job runnable on a workstation instead of a cluster. A `read_csv` into a Pandas DataFrame would have to hold the entire 88-column source at once.
-
-### 2. DuckDB for UNPIVOT, Polars for everything else
-
-Silver reshapes 35 wide financial columns (`pim_2022`, `devengado_2023`, etc.) into long format. Polars `melt()` at this width materializes the intermediate; DuckDB's vectorized UNPIVOT runs through the query optimizer with an explicit memory ceiling (`PRAGMA memory_limit='10GB'`, spilling to a temp directory). The tradeoff is explicit: DuckDB owns this one transformation, Polars owns everything else.
-
-### 3. `polars-hash` for stable surrogate keys instead of `pl.hash()`
-
-`pl.hash()` does not guarantee identical output across Polars version upgrades. A version bump silently breaks every FK relationship between dimension and fact tables — the join returns zero rows with no error. `polars-hash` provides deterministic wyhash keys that survive version changes, and unlike `map_elements`, it runs inside the Polars streaming engine without forcing RAM materialization.
-
-### 4. `ignore_nulls=True` in `concat_str` — a real data integrity bug
-
-Municipal entities (`nivel_gobierno = "gobierno local"`) frequently have `pliego = NULL` in source data. Without `ignore_nulls=True`, one NULL field collapses the entire surrogate key expression to NULL — producing the same key for thousands of different municipalities. Silent collision. This was a live data integrity bug, caught and fixed at the hash generation layer. See `etl_04_star_schema.py` lines 108-114 (dimensions) and 132-143 (fact).
-
-### 5. Financial reconciliation as a hard pipeline gate — not a warning
-
-```python
-silver_total = lazy_silver.select(pl.col("monto").sum()).collect().item()
-gold_total = lazy_gold_fact.select(pl.col("monto").sum()).collect().item()
-discrepancy = abs(silver_total - gold_total)
-
-# 0.01 threshold allowance due to Float64 precision handling
-if discrepancy > 0.01:
-    raise ValueError(f"Data quality audit failed. Financial mismatch detected: S/. {discrepancy:,.2f}")
-```
-
-`abs(Σ silver.monto − Σ gold.monto) ≤ S/. 0.01` is enforced before any report runs. If violated, the pipeline raises and halts. This is the same control logic used in accounting systems: no downstream output until the numbers tie out.
-
-**Last recorded run: S/. 0.00 discrepancy** — both layers summed to S/. 5,373,286,978,810.52 (`notebooks/03_auditoria_calidad.ipynb`, Control 1 output).
-
----
-
-## Conversational analytics layer
-
-Natural language → SQL → DuckDB execution → structured executive summary.
-
-Two LLM calls per question (Groq / `llama-3.3-70b-versatile`):
-
-```
-User question
-      │
-      ▼
-  LLM Call 1 — _translate_to_sql()
-  System prompt: 205-line schema description
-  + business rules + 7 worked examples
-      │
-      ▼
-  QueryValidationPolicy        ← SELECT-only, 22 forbidden keywords (sqlparse)
-  SQLSemanticContractValidator ← column scope, aggregation consistency,
-                                  CTE dependency graph, grain detection
-      │
-      ▼
-  DuckDB execution over Gold Parquet views
-      │
-      ▼
-  LLM Call 2 — _synthesize()
-  Input: question + SQL + results
-  Output: structured JSON
-         (intent, title, KPIs, chart spec, insights, follow-ups)
-      │
-      ▼
-  Streamlit + Plotly rendering
-```
-
-The LLM never sees raw data — it sees the schema, generates SQL, and synthesizes the execution results. Two independent validation layers run between generation and execution.
-
----
-
-## Data quality gates
+## Data Quality Gates
 
 | Gate | Logic | On failure |
 |---|---|---|
-| Financial reconciliation | `abs(Σ Silver − Σ Gold) ≤ S/. 0.01` | `ValueError` raised, pipeline stops |
-| Row volumetrics | Silver clean rows == Gold fact rows | Warning logged, gap reported |
-| SQL safety | SELECT-only, 22 forbidden tokens | Query rejected before execution |
-| SQL semantics | Column scope, aggregation, grain | Query rejected before execution |
+| Financial reconciliation | `abs(Σ Silver − Σ Gold) ≤ S/. 0.01` | `ValueError`, pipeline halts |
+| Row volumetrics | Silver clean rows == Gold fact rows | Warning logged with the gap |
+| SQL safety | `SELECT`/`WITH` only, 22 forbidden keywords (`sqlparse`) | Query rejected before execution |
+| SQL semantics | column scope, aggregation consistency, CTE graph, grain | Query rejected before execution |
 
-131 unit tests — executed automatically on every push to `main` via GitHub Actions.
+The last recorded full-data run reconciled both layers at **S/. 5,373,286,978,810.52** with a difference of **S/. 0.00**.
 
-### Pipeline determinism
+## What the Data Says
 
-`scripts/test_pipeline_diff.py` runs the full pipeline twice and compares outputs — row counts, schemas, and monetary sums must be identical across runs. Any drift raises an error. This catches non-determinism in hash generation, float precision, or row-ordering dependencies before they reach production.
+All figures below come from the last recorded full-data run, saved in `notebooks/`.
 
-Silent transformation errors are worse than crashes. This pipeline fails loudly instead of producing plausible but incorrect aggregates.
+**The planned budget grew 17.0% over four years.** PIM rose from S/ 147.06 billion in 2022 to S/ 172.07 billion in 2025.
 
----
+**Execution in 2022 was 88.6%.** S/ 130.29 billion devengado against S/ 147.06 billion PIM — the remaining 11.4% is the gap between what was budgeted and what was actually spent.
 
-## Performance
+**Spending is geographically concentrated by construction.** In 2024, executing units in Lima reported S/ 91.43 billion devengado; Cusco, the second department, reported S/ 5.63 billion — a 16.2× difference. National ministries execute in Lima, so this is a property of the Peruvian state, not a data artefact.
 
-No benchmark is committed to this repository, so no runtime figures are claimed here. The pipeline is orchestrated by Prefect and each stage logs its own duration at `INFO` level; run `uv run python main.py` to obtain numbers for your own hardware.
+**2026 is a clone of 2025.** PIM for both years is S/ 172.067633 billion to the last digit. The pipeline acknowledges the duplication instead of silently averaging it: the analytical layer appends `anio <= 2025` to every generated query.
 
----
+## Conversational Analytics
 
-## Quick start
+Natural language → SQL → DuckDB → structured executive answer. Two LLM calls per question on Groq (`llama-3.3-70b-versatile`):
 
-### Option A — Docker
+1. **Translate** — a 205-line schema description, business rules and 7 worked examples produce SQL.
+2. **Synthesize** — question, SQL and result rows produce structured JSON: intent, headline metric, chart spec, insights, follow-up questions.
+
+Two independent validators run between generation and execution: `QueryValidationPolicy` (single statement, `SELECT`/`WITH` only, 22 forbidden keywords) and `SQLSemanticContractValidator` (column scope, aggregation consistency, CTE dependency graph, grain family). The model never sees raw data.
+
+The interface is fully bilingual: every label, chart and answer follows the language selector.
+
+## Quick Start
+
+**Docker** — no local Python required:
 
 ```bash
 git clone https://github.com/DaelFame/peru-budget-lakehouse.git
@@ -190,38 +141,26 @@ docker build -t peru-budget-lakehouse .
 docker run -p 8501:8501 peru-budget-lakehouse
 ```
 
-Dashboard loads at `http://localhost:8501`, backed by the 450,000-row demo sample baked into the image.
-
-To run against your own Gold layer instead, mount it over the demo:
+Dashboard at `http://localhost:8501`, served from the demo layer baked into the image. To use your own Gold layer instead:
 
 ```bash
 docker run -p 8501:8501 -v "$(pwd)/data:/app/data" peru-budget-lakehouse
 ```
 
-### Option B — Local (uv)
+**Local:**
 
 ```bash
-git clone https://github.com/DaelFame/peru-budget-lakehouse.git
-cd peru-budget-lakehouse
 uv sync
 uv run streamlit run app.py
 ```
 
-### Option C — Full pipeline
-
-Download the MEF budget execution CSV from the [MEF open data portal](https://datosabiertos.mef.gob.pe/dataset/comparacion-de-presupuesto-ejecucion-gasto/resource/510bae6d-3d37-4fb2-af35-a40ce01715f4) and place it at:
-
-```
-data/01_bronze/comparativo_gastos_2022_2026.csv
-```
-
-Then run:
+**Full pipeline** — requires the source CSV at `data/01_bronze/comparativo_gastos_2022_2026.csv` (download it from the MEF portal; neither the CSV nor the Gold layer is committed):
 
 ```bash
-uv run python main.py   # Prefect-orchestrated, sequential
+uv run python main.py
 ```
 
-Or stage by stage:
+Individual stages run the same way:
 
 ```bash
 uv run python src/etl_01_bronze_ingestion.py
@@ -232,93 +171,109 @@ uv run python src/etl_05_data_quality_audit.py
 uv run python src/etl_06_analytical_reports.py
 ```
 
----
+The conversational layer needs `GROQ_API_KEY`. Without it the dashboard still renders every deterministic view and says so.
 
-## What to read first
+**Tests:** `uv run pytest` — 131 tests, including an end-to-end render of the dashboard and the demo-sampling acceptance gates.
+
+## Known Limitations
+
+**The committed demo is a row-level sample, and the dashboard says so.** Drawing individual rows from a long-format fact table keeps a `pim` fact while dropping the `devengado` fact of the same entity. The ratio then compares different entities: the shipped sample reports impossible execution rates. Demo mode therefore hides the execution rate and the unexecuted gap, explains why on the card, and reports PIM/devengado pair coverage instead — the share of entity-years that actually carry both phases. In the committed sample that coverage is 0.06%; a correct entity-level sample reports a valid rate. Monetary totals stay visible and are labelled illustrative: they are a subset of the real ledger, not the national total.
+
+**Regenerating the demo correctly.** `scripts/build_demo_dataset.py` now samples whole entities — every year and phase of a selected record is kept — and refuses to write a demo whose global or per-year execution rate leaves [0, 100]. Geographic concentration is reported, never enforced: Lima concentrates PIM because national ministries execute there. Run it on a machine that holds `data/03_gold/`:
+
+```bash
+uv run python scripts/build_demo_dataset.py
+```
+
+It writes `data/00_demo/*.parquet` plus `manifest.json` with the parameters, row counts and validation output. `uv run python scripts/demo_stats.py` re-derives every demo figure quoted here.
+
+**No benchmark is committed.** The pipeline logs per-stage durations at `INFO`; no timing or memory figure appears in this README because no run JSON is versioned. Run `uv run python main.py` for numbers on your hardware.
+
+**The Docker image is not built in CI.** The documented commands work from the repository layout; the image build itself is unverified here.
+
+**159,981 source rows share a duplicate `KEY_VALUE` (2.0% of the file).** They are kept, not silently dropped: the reconciliation gate compares Silver against Gold, so it cannot detect a duplicate that reaches both layers. Deduplicating needs a business rule the source does not provide.
+
+**`GrainRouter` is not wired into the engine.** Pre-LLM grain classification exists and is covered by tests, but `AIEngine.ask()` does not call it yet. The sidebar filters are likewise not passed into the LLM context.
+
+**2026 is excluded, not corrected.** The source repeats 2025 in the 2026 columns; the pipeline filters it out rather than attempting to repair the export.
+
+## Where the Numbers Come From
+
+| Figure | Source |
+|---|---|
+| 8,002,563 source rows; 159,981 duplicate keys | `notebooks/01_ingesta_silver.ipynb:335-337` |
+| 88 columns; 35 financial columns | `notebooks/01_ingesta_silver.ipynb:181`, `:607` |
+| 29,530,978 fact rows | `notebooks/02_modelado_gold.ipynb:448`, `notebooks/03_auditoria_calidad.ipynb:220` |
+| Dimension row counts | `notebooks/02_modelado_gold.ipynb:61, 135, 210, 287, 366` |
+| Reconciliation total and difference | `notebooks/03_auditoria_calidad.ipynb:64-66` |
+| PIM by fiscal year; 2022 devengado | `notebooks/04_reportes_gerenciales.ipynb:156-160`, `notebooks/03:134` |
+| Lima and Cusco devengado 2024 | `notebooks/04_reportes_gerenciales.ipynb:90-91` |
+| Demo row counts and coverage | `uv run python scripts/demo_stats.py` |
+| 22 forbidden keywords; 7 examples; 205-line schema | `src/dashboard/ai_engine.py:30-35`, `:174-263`, `:60-264` |
+| 131 tests | `uv run pytest` |
+
+## What to Read First
 
 | File | What it demonstrates |
 |---|---|
-| `src/etl_03_silver_unpivot.py` | DuckDB UNPIVOT — the core memory tradeoff |
-| `src/etl_04_star_schema.py` | `ignore_nulls=True` at lines 111 and 137 — why it exists |
-| `src/etl_05_data_quality_audit.py` | Financial reconciliation gate logic |
-| `src/dashboard/ai_engine.py` | Two-LLM-call pipeline, SQL validation layers |
-| `src/dashboard/semantic_contract.py` | `SQLSemanticContractValidator` — column scope, grain enforcement |
+| `src/etl_03_silver_unpivot.py` | The unbounded-memory reshape, delegated to DuckDB |
+| `src/etl_04_star_schema.py` | Surrogate keys, `ignore_nulls=True`, streaming dimensions |
+| `src/etl_05_data_quality_audit.py` | Reconciliation as a hard gate |
+| `src/dashboard/semantic_contract.py` | SQL validation: scope, aggregation, CTE graph, grain |
+| `src/dashboard/ai_engine.py` | Two-call NL→SQL→answer pipeline and its prompt contract |
+| `scripts/build_demo_dataset.py` | Entity-level sampling with acceptance gates |
 | `main.py` | Prefect `wait_for=` dependency chain |
-| `src/config.py` | Hardware auto-detection, smart path resolver |
 
----
-
-## Stack
-
-| Tool | Why |
-|---|---|
-| Polars 1.40 | Streaming LazyFrame engine, Rust core, zero-copy scans |
-| DuckDB | Vectorized UNPIVOT, embedded OLAP, zero-copy Parquet reads |
-| polars-hash 0.6 | Cross-version stable wyhash surrogate keys |
-| Groq / llama-3.3-70b | LLM backend for NL→SQL and synthesis |
-| Prefect 3.x | Task-level observability, `wait_for=` dependency enforcement |
-| Streamlit | Dashboard and conversational UI |
-| Docker | Reproducible environment — eliminates native dependency friction (Polars/Rust, DuckDB) |
-| GitHub Actions | CI — 131 unit tests on every push to `main` |
-| Parquet + ZSTD | Columnar storage with predicate pushdown, no external database |
-| uv | Rust-based package manager, reproducible lockfile |
-
----
-
-## Project structure
+## Repository Structure
 
 ```
 peru-budget-lakehouse/
-├── main.py                               # Prefect orchestration entry point
-├── Dockerfile
+├── main.py                     Prefect orchestration entry point
+├── app.py                      Streamlit dashboard (bilingual)
 ├── src/
-│   ├── config.py                         # Paths, hardware detection, constants
-│   ├── etl_01_bronze_ingestion.py
-│   ├── etl_02_silver_cleaning.py
-│   ├── etl_03_silver_unpivot.py          # DuckDB UNPIVOT
-│   ├── etl_04_star_schema.py             # Star schema, wyhash surrogate keys
-│   ├── etl_05_data_quality_audit.py      # Reconciliation gate
-│   ├── etl_06_analytical_reports.py
-│   ├── dashboard/
-│   │   ├── ai_engine.py                  # Two-LLM-call pipeline
-│   │   ├── semantic_contract.py          # SQL semantic validator
-│   │   ├── grain_router.py               # Grain classifier (pre-LLM)
-│   │   ├── components.py                 # Streamlit rendering
-│   │   └── database.py                   # DuckDB view registration
-│   └── observability/                    # Query execution trace model
-├── scripts/
-│   └── test_pipeline_diff.py             # Determinism checker (dual-run comparison)
-├── tests/                                # 131 unit tests
-├── sql/
-├── data/
-│   ├── 00_demo/                          # Pre-built 450K-row Gold Parquet
-│   ├── 01_bronze/                        # gitignored
-│   ├── 02_silver/                        # gitignored
-│   └── 03_gold/                          # gitignored
-├── pyproject.toml
-└── uv.lock
+│   ├── config.py               Paths, hardware detection, demo/production resolver
+│   ├── etl_01..06              Bronze → Silver → Gold → QA → reports
+│   ├── dashboard/              Queries, components, AI engine, semantic validator
+│   └── observability/          Query execution trace model
+├── scripts/                    Demo builder, demo stats, determinism checker
+├── tests/                      131 tests
+├── sql/                        Four executive reports
+├── notebooks/                  Exploratory analysis with recorded outputs
+├── data/00_demo/               Committed 450,000-row demo layer
+└── assets/                     Dashboard screenshots
 ```
 
----
+`data/01_bronze/`, `data/02_silver/` and `data/03_gold/` are gitignored: they are regenerated by the pipeline.
+
+## Stack
+
+| Tool | Role |
+|---|---|
+| Polars | Streaming ingestion and normalization |
+| DuckDB | UNPIVOT and embedded OLAP over Parquet |
+| polars-hash | Version-stable wyhash surrogate keys |
+| Prefect | Orchestration with explicit dependencies |
+| Groq / llama-3.3-70b | NL→SQL translation and answer synthesis |
+| Streamlit + Plotly | Dashboard and conversational UI |
+| Parquet + ZSTD | Columnar storage with predicate pushdown |
+| Docker | Reproducible runtime |
+| GitHub Actions | CI: full test suite on every push and PR |
+| uv | Dependency resolution and lockfile |
 
 ## Roadmap
 
-- [x] Medallion pipeline: Bronze → Silver → Gold (streaming at every layer)
-- [x] Kimball star schema: 1 fact + 5 dimensions, wyhash surrogate keys
-- [x] Financial reconciliation QA gate (S/. 0.01 tolerance)
-- [x] Prefect orchestration with explicit sequential dependencies
-- [x] DuckDB analytical reports layer
-- [x] Demo dataset (450,000-row sample of the Gold layer)
-- [x] Streamlit dashboard (runs locally and in Docker)
-- [x] Conversational LLM analytics (NL → SQL → synthesis, two-call pipeline)
-- [x] SQL safety guardrails (SELECT-only + semantic contract validator)
-- [x] 131 unit tests + GitHub Actions CI
-- [x] Docker
-- [ ] Wire `GrainRouter` into `AIEngine.ask()` — pre-LLM grain classification exists and is tested, not yet connected to production flow
-- [ ] Pass active sidebar filters into LLM context
-- [ ] AWS S3 integration (remote Parquet reads via DuckDB S3 extension)
+- [x] Medallion pipeline: Bronze → Silver → Gold, streaming at every layer
+- [x] Kimball star schema: 1 fact + 5 dimensions with stable surrogate keys
+- [x] Financial reconciliation as a blocking gate
+- [x] Prefect orchestration with explicit ordering
+- [x] Deterministic DuckDB report layer
+- [x] Bilingual dashboard with conversational analytics and SQL guardrails
+- [x] Entity-level demo sampler with acceptance gates
+- [ ] Wire `GrainRouter` into `AIEngine.ask()`
+- [ ] Pass active sidebar filters into the LLM context
+- [ ] Remote Parquet reads (DuckDB S3 extension)
+- [ ] Regenerate the committed demo from a full pipeline run
 
 ---
-
 
 [LinkedIn](https://www.linkedin.com/in/joaquin-cardenas-956a0a218) · [GitHub](https://github.com/DaelFame)
