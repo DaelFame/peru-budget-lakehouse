@@ -22,6 +22,7 @@ sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "src")))
 from dashboard.database import (
     load_filters_data,
     load_dashboard_metrics,
+    get_sampling_coverage,
     get_top_concentrations_data,
     get_execution_variance_data,
     get_geographic_heatmap_data,
@@ -189,6 +190,10 @@ def cached_metrics(year, gov_level, sector, dept):
     )
 
 @st.cache_data
+def cached_coverage():
+    return get_sampling_coverage()
+
+@st.cache_data
 def cached_top_concentrations(group_by, year, gov_level, sector, dept):
     return get_top_concentrations_data(
         group_by_column=group_by,
@@ -293,6 +298,9 @@ def main():
             "kpi_executed": "Total Executed Budget",
             "kpi_rate": "Budget Execution Rate",
             "kpi_gap": "Unexecuted Budget Gap",
+            "kpi_coverage": "PIM/devengado pair coverage",
+            "kpi_coverage_help": "Share of entity-years that carry both a PIM and a devengado fact. In the full pipeline both phases come from the same source row; a row-level sample keeps one phase and drops the other, so the ratio stops comparing the same entity.",
+            "kpi_ratio_disabled": "Execution rate and unexecuted gap are disabled in demo mode: the fact table is stored long, one row per phase, and a sampled row set does not preserve the PIM/devengado pair of the same entity.",
             "execution_warning": "⚠️ Low Execution (< 50%)",
             "sec_concentrations": "Where Does Most of Peru's Money Go?",
             "sub_concentrations": "Identifies the highest budget concentrations. Choose Sector or Department below to group.",
@@ -305,6 +313,7 @@ def main():
             "no_var_data": "No comparative variance data found matching the active filters.",
             "sec_heatmap": "Which Regions Are Falling Behind, Year After Year?",
             "sub_heatmap": "Heatmap distribution illustrating execution rates (%) grouped by Executing Department across all available Fiscal Years. Muted shades indicate lower output levels, and deeper Crimson represents solid progress.",
+            "sub_heatmap_demo": "Planned budget (PIM) by executing department and fiscal year. Execution rates are not shown in demo mode: a sampled row set cannot rebuild the PIM/devengado pair of the same entity.",
             "no_heatmap_data": "No geographic heatmap data found matching the active filters.",
             "sec_economic": "Is the Budget Going to People, Services, or Debt?",
             "sub_economic": "Budget distribution by economic category (Personnel, Goods & Services, Investment, Debt Service, etc.).",
@@ -347,7 +356,7 @@ def main():
             "chat_show_sql": "View SQL Query",
             "chat_error_prefix": "Sorry, I could not process your question.",
             "chat_welcome": "Ask me anything about Peru's national budget! For example: \"What was the total PIM for 2024?\" or \"Which sector had the highest execution rate in 2023?\"",
-            "demo_warning": "⚠️ **Demo Mode** — The data shown has been trimmed to demonstrate dashboard and AI functionality. This is not the complete production dataset.",
+            "demo_warning": "Built from a sample. Monetary totals are illustrative; execution rates are disabled because sampled rows do not preserve entity-level PIM/devengado pairs.",
         }
     else:
         LANG = {
@@ -368,6 +377,9 @@ def main():
             "kpi_executed": "Presupuesto Ejecutado Total",
             "kpi_rate": "Tasa de Ejecución Presupuestal",
             "kpi_gap": "Brecha de Presupuesto No Ejecutado",
+            "kpi_coverage": "Cobertura del par PIM/devengado",
+            "kpi_coverage_help": "Porcentaje de entidades-año que tienen a la vez un registro PIM y uno devengado. En el pipeline completo ambas fases vienen de la misma fila de origen; una muestra de filas conserva una fase y descarta la otra, así que el cociente deja de comparar la misma entidad.",
+            "kpi_ratio_disabled": "La tasa de ejecución y la brecha están deshabilitadas en modo demo: la tabla de hechos está en formato largo, una fila por fase, y una muestra de filas no conserva el par PIM/devengado de la misma entidad.",
             "execution_warning": "⚠️ Baja Ejecución (< 50%)",
             "sec_concentrations": "¿A dónde va la mayor parte del dinero del Estado?",
             "sub_concentrations": "Identifica las mayores concentraciones presupuestarias. Seleccione Sector o Departamento a continuación para agrupar.",
@@ -380,6 +392,7 @@ def main():
             "no_var_data": "No se encontraron datos de variación comparativa que coincidan con los filtros activos.",
             "sec_heatmap": "¿Qué regiones siguen quedándose atrás, año tras año?",
             "sub_heatmap": "Distribución del mapa de calor que ilustra las tasas de ejecución (%) agrupadas por Departamento Ejecutor a lo largo de todos los Años Fiscales disponibles. Los tonos tenues indican niveles de producción más bajos, y el carmesí más profundo representa un progreso sólido.",
+            "sub_heatmap_demo": "Presupuesto programado (PIM) por departamento ejecutor y año fiscal. Las tasas de ejecución no se muestran en modo demo: una muestra de filas no permite reconstruir el par PIM/devengado de la misma entidad.",
             "no_heatmap_data": "No se encontraron datos del mapa de calor geográfico que coincidan con los filtros activos.",
             "sec_economic": "¿El presupuesto va a personas, servicios o deuda?",
             "sub_economic": "Distribución presupuestal por categoría económica (Personal, Bienes y Servicios, Inversiones, Servicio de la Deuda, etc.).",
@@ -422,7 +435,7 @@ def main():
             "chat_show_sql": "Ver consulta SQL",
             "chat_error_prefix": "Lo siento, no pude procesar tu pregunta.",
             "chat_welcome": "¡Pregúntame lo que quieras sobre el presupuesto nacional del Perú! Por ejemplo: \"¿Cuál fue el PIM total del 2024?\" o \"¿Qué sector tuvo la mayor tasa de ejecución en 2023?\"",
-            "demo_warning": "⚠️ **Modo Demo** — Los datos mostrados han sido recortados para mostrar el funcionamiento del dashboard y la IA. No son el conjunto de datos completo de producción.",
+            "demo_warning": "Construido a partir de una muestra. Los totales monetarios son ilustrativos; las tasas de ejecución están deshabilitadas porque las filas muestreadas no conservan el par PIM/devengado de una misma entidad.",
         }
     # ----------------------------------------------------
     # SIDEBAR CONTROL PANEL
@@ -510,7 +523,12 @@ def main():
     # LAYER 1: EXECUTIVE OVERVIEW (KPI CARDS)
     # ----------------------------------------------------
     st.subheader(LANG["sec_kpis"])
-    render_kpi_cards(metrics, LANG)
+    render_kpi_cards(
+        metrics,
+        LANG,
+        coverage=cached_coverage() if IS_DEMO else None,
+        demo_mode=IS_DEMO,
+    )
     st.markdown("---")
 
     # ----------------------------------------------------
@@ -656,7 +674,7 @@ def main():
     # LAYER 5: GEOGRAPHIC ACCOUNTABILITY MATRIX (HEATMAP)
     # ----------------------------------------------------
     st.subheader(LANG["sec_heatmap"])
-    st.markdown(LANG['sub_heatmap'])
+    st.markdown(LANG["sub_heatmap_demo"] if IS_DEMO else LANG["sub_heatmap"])
 
     with st.spinner(LANG["spinner_geo"]):
         df_geo = cached_geographic_heatmap(
@@ -667,7 +685,7 @@ def main():
         )
 
     if not df_geo.empty:
-        render_geographic_heatmap(df_geo)
+        render_geographic_heatmap(df_geo, demo_mode=IS_DEMO)
     else:
         st.info(LANG["no_heatmap_data"])
 

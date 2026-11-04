@@ -114,37 +114,68 @@ def format_boardroom_currency(value: float, lang_dict: dict = None) -> str:
 # ----------------------------------------------------
 # 1. CORE KPI CARDS COMPONENT
 # ----------------------------------------------------
-def render_kpi_cards(metrics_dict: Dict[str, float], lang_dict: dict = None) -> None:
+def render_kpi_cards(
+    metrics_dict: Dict[str, float],
+    lang_dict: dict = None,
+    coverage: Dict[str, float] = None,
+    demo_mode: bool = False,
+) -> None:
     """
-    Renders the 4 Core KPI cards cleanly across 4 columns without card borders,
-    maximizing typographical clarity and data prominence.
+    Renders the Core KPI cards without card borders, maximizing typographical
+    clarity and data prominence.
 
-    KPIs Displayed:
-        1. Total Planned Budget (PIM) - Formatted as Soles (S/.)
-        2. Total Executed Budget (DEVENGADO) - Formatted as Soles (S/.)
-        3. Budget Execution Rate (%) - Formatted as "XX.X%"
-        4. Unexecuted Budget Gap - Formatted as Soles (S/.)
+    KPIs Displayed (full dataset):
+        1. Total Planned Budget (PIM)
+        2. Total Executed Budget (DEVENGADO)
+        3. Budget Execution Rate (%)  -> devengado / pim
+        4. Unexecuted Budget Gap
+
+    In demo mode the two ratio KPIs are replaced by the sampling-coverage
+    figure. The fact table is stored long: one row per phase. A sample that
+    draws individual rows keeps a `pim` fact while losing its `devengado`
+    sibling, so the ratio no longer compares the same entities and can exceed
+    100%. Coverage is the invariant that a sample can actually report.
 
     Args:
-        metrics_dict (Dict[str, float]): Dictionary containing 'pim', 'devengado',
-                                         'execution_rate', and 'unexecuted_gap'.
+        metrics_dict (Dict[str, float]): 'pim', 'devengado', 'execution_rate',
+                                         'unexecuted_gap'.
         lang_dict (dict): Dictionary with active language keys.
+        coverage (Dict[str, float]): 'coverage_pct', 'complete_entity_years',
+                                     'total_entity_years'.
+        demo_mode (bool): Replace ratio KPIs with sampling coverage.
     """
     if lang_dict is None:
         lang_dict = {}
-    cols = st.columns(4)
+    if coverage is None:
+        coverage = {}
 
     pim = metrics_dict.get("pim", 0.0)
     devengado = metrics_dict.get("devengado", 0.0)
     execution_rate = metrics_dict.get("execution_rate", 0.0)
     unexecuted_gap = metrics_dict.get("unexecuted_gap", 0.0)
 
-    # Format values as human-readable currencies or percentages
     pim_str = format_boardroom_currency(pim, lang_dict)
     dev_str = format_boardroom_currency(devengado, lang_dict)
     rate_str = f"{execution_rate:.1f}%"
     gap_str = format_boardroom_currency(unexecuted_gap, lang_dict)
 
+    if demo_mode:
+        cols = st.columns(3)
+        coverage_pct = coverage.get("coverage_pct", 0.0)
+        with cols[0]:
+            st.metric(label=lang_dict.get("kpi_pim", "Total Planned Budget (PIM)"), value=pim_str)
+        with cols[1]:
+            st.metric(label=lang_dict.get("kpi_executed", "Total Executed Budget"), value=dev_str)
+        with cols[2]:
+            st.metric(
+                label=lang_dict.get("kpi_coverage", "PIM/devengado pair coverage"),
+                value=f"{coverage_pct:.2f}%",
+                help=lang_dict.get("kpi_coverage_help", ""),
+            )
+        st.caption(lang_dict.get("kpi_ratio_disabled", ""))
+        return
+
+    cols = st.columns(4)
     with cols[0]:
         st.metric(label=lang_dict.get("kpi_pim", "Total Planned Budget (PIM)"), value=pim_str)
     with cols[1]:
@@ -325,47 +356,65 @@ def render_execution_variance(df: pd.DataFrame, lang_dict: dict = None) -> None:
 # ----------------------------------------------------
 # 4. CHART 3: GEOGRAPHIC EXECUTION HEATMAP
 # ----------------------------------------------------
-def render_geographic_heatmap(df: pd.DataFrame) -> None:
+def render_geographic_heatmap(df: pd.DataFrame, demo_mode: bool = False) -> None:
     """
-    Renders a high-contrast sequential heatmap showing budget execution rates
-    grouped by department (y-axis) over fiscal years (x-axis).
-    Uses a restrained gradient palette.
+    Renders a high-contrast sequential heatmap grouped by department (y-axis)
+    over fiscal years (x-axis). Uses a restrained gradient palette.
+
+    The cell value is the execution rate, except in demo mode: a sampled
+    long-format fact table cannot reconstruct the PIM/devengado pair of the
+    same entity, so the demo maps planned budget (PIM) instead. The geographic
+    distribution survives sampling; the ratio does not.
 
     Args:
         df (pd.DataFrame): DataFrame with columns:
                            ['department', 'fiscal_year', 'pim', 'devengado', 'execution_rate'].
+        demo_mode (bool): Plot PIM instead of execution rate.
     """
     if df.empty:
         st.warning("No geographic heatmap data found.")
         return
 
+    value_column = "pim" if demo_mode else "execution_rate"
+
     # Clean and parse types
     df_clean = df.copy()
     df_clean["department"] = df_clean["department"].fillna("Unspecified").astype(str)
     df_clean["fiscal_year"] = df_clean["fiscal_year"].astype(str)
-    df_clean["execution_rate"] = df_clean["execution_rate"].fillna(0.0)
+    df_clean[value_column] = df_clean[value_column].fillna(0.0)
 
     # Pivot department names as index and years as columns
     pivot_df = df_clean.pivot(
         index="department",
         columns="fiscal_year",
-        values="execution_rate"
+        values=value_column
     ).fillna(0.0)
 
     # Sort index descending so departments are alphabetical from top to bottom
     pivot_df = pivot_df.sort_index(ascending=False)
 
-    # Status-based diverging colorscale: red (low) → amber (medium) → green (high)
-    colorscale = [
-        [0.0, _get_colors()["danger"]],
-        [0.4, _get_colors()["warning"]],
-        [0.75, _get_colors()["success"]],
-    ]
+    if demo_mode:
+        colorscale = [
+            [0.0, _get_colors().get("bar_muted", "#94A3B8")],
+            [1.0, _get_colors()["primary"]],
+        ]
+        colorbar_title = "PIM (S/.)"
+        hover = "Department: %{y}<br>Year: %{x}<br>Planned (PIM): S/. %{z:,.0f}<extra></extra>"
+        z_bounds = {}
+    else:
+        colorscale = [
+            [0.0, _get_colors()["danger"]],
+            [0.4, _get_colors()["warning"]],
+            [0.75, _get_colors()["success"]],
+        ]
+        colorbar_title = "Rate (%)"
+        hover = "Department: %{y}<br>Year: %{x}<br>Execution Rate: %{z:.1f}%<extra></extra>"
+        z_bounds = {"zmin": 0, "zmax": 100}
 
-    # FIX: Configured colorbar using modern nested dictionary structure to resolve Plotly crash
+    # Configured colorbar using modern nested dictionary structure
     colorbar_config = dict(
         title=dict(
-            text="Rate (%)",
+            text=colorbar_title,
             side="top"
         ),
         thickness=12,
@@ -380,9 +429,8 @@ def render_geographic_heatmap(df: pd.DataFrame) -> None:
             y=pivot_df.index.tolist(),
             colorscale=colorscale,
             colorbar=colorbar_config,
-            zmin=0,
-            zmax=100,
-            hovertemplate="Department: %{y}<br>Year: %{x}<br>Execution Rate: %{z:.1f}%<extra></extra>"
+            hovertemplate=hover,
+            **z_bounds,
         )
     )
 

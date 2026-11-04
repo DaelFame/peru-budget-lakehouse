@@ -242,6 +242,54 @@ def load_dashboard_metrics(
 
 
 # ----------------------------------------------------
+# 2b. SAMPLING COVERAGE
+# Share of entity-years that carry both a PIM and a devengado fact.
+# In the full pipeline both phases come from the same source row, so the pair
+# is intact. A row-level sample of the long fact table drops one phase and
+# keeps the other, so this share is the honest way to describe how much of the
+# record structure a given dataset preserves.
+# ----------------------------------------------------
+def get_sampling_coverage() -> Dict[str, float]:
+    """
+    Returns:
+        total_entity_years    → entity-years carrying at least one fact
+        complete_entity_years → entity-years carrying both pim and devengado
+        coverage_pct          → complete / total * 100
+    """
+    logger.info("Calculating PIM/devengado pair coverage...")
+    con = get_connection()
+    query = """
+        WITH entity_years AS (
+            SELECT
+                sk_geografia_id, sk_institucion_id, sk_programatica_id,
+                sk_economica_id, sk_financiamiento_id, anio,
+                MAX(CASE WHEN fase = 'pim'       THEN 1 ELSE 0 END) AS has_pim,
+                MAX(CASE WHEN fase = 'devengado' THEN 1 ELSE 0 END) AS has_devengado
+            FROM fact_presupuesto
+            GROUP BY 1, 2, 3, 4, 5, 6
+        )
+        SELECT
+            COUNT(*)                                                              AS total_entity_years,
+            SUM(CASE WHEN has_pim = 1 AND has_devengado = 1 THEN 1 ELSE 0 END)    AS complete_entity_years
+        FROM entity_years
+    """
+    try:
+        total, complete = con.execute(query).fetchone()
+        total = int(total or 0)
+        complete = int(complete or 0)
+        coverage = {
+            "total_entity_years": total,
+            "complete_entity_years": complete,
+            "coverage_pct": (complete / total * 100.0) if total else 0.0,
+        }
+        logger.info(f"Pair coverage: {coverage}")
+        return coverage
+    except Exception as e:
+        logger.error(f"Error calculating pair coverage: {str(e)}")
+        raise
+
+
+# ----------------------------------------------------
 # 3. TOP BUDGET CONCENTRATIONS
 # Aggregates PIM by sector or department for the bar chart.
 # Always JOINs the dimension being grouped — conditionally JOINs
