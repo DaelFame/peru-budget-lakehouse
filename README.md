@@ -163,7 +163,7 @@ The LLM never sees raw data — it sees the schema, generates SQL, and synthesiz
 | SQL safety | SELECT-only, 22 forbidden tokens | Query rejected before execution |
 | SQL semantics | Column scope, aggregation, grain | Query rejected before execution |
 
-108 unit tests — executed automatically on every push to `main` via GitHub Actions.
+131 unit tests — executed automatically on every push to `main` via GitHub Actions.
 
 ### Pipeline determinism
 
@@ -259,7 +259,7 @@ uv run python src/etl_06_analytical_reports.py
 | Prefect 3.x | Task-level observability, `wait_for=` dependency enforcement |
 | Streamlit | Dashboard and conversational UI |
 | Docker | Reproducible environment — eliminates native dependency friction (Polars/Rust, DuckDB) |
-| GitHub Actions | CI — 108 unit tests on every push to `main` |
+| GitHub Actions | CI — 131 unit tests on every push to `main` |
 | Parquet + ZSTD | Columnar storage with predicate pushdown, no external database |
 | uv | Rust-based package manager, reproducible lockfile |
 
@@ -288,7 +288,7 @@ peru-budget-lakehouse/
 │   └── observability/                    # Query execution trace model
 ├── scripts/
 │   └── test_pipeline_diff.py             # Determinism checker (dual-run comparison)
-├── tests/                                # 108 unit tests
+├── tests/                                # 131 unit tests
 ├── sql/
 ├── data/
 │   ├── 00_demo/                          # Pre-built 450K-row Gold Parquet
@@ -312,7 +312,7 @@ peru-budget-lakehouse/
 - [x] Streamlit dashboard (runs locally and in Docker)
 - [x] Conversational LLM analytics (NL → SQL → synthesis, two-call pipeline)
 - [x] SQL safety guardrails (SELECT-only + semantic contract validator)
-- [x] 108 unit tests + GitHub Actions CI
+- [x] 131 unit tests + GitHub Actions CI
 - [x] Docker
 - [ ] Wire `GrainRouter` into `AIEngine.ask()` — pre-LLM grain classification exists and is tested, not yet connected to production flow
 - [ ] Pass active sidebar filters into LLM context
